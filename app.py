@@ -19,6 +19,7 @@ from analytics import (
     append_history_entry,
     append_history_entries,
     compare_feature_distributions,
+    compare_regression_models,
     compare_what_if_predictions,
     compute_global_feature_importance,
     create_history_entry,
@@ -144,6 +145,15 @@ def load_reference_locktime() -> tuple[pd.DataFrame, dict[str, Any]]:
 @st.cache_data
 def load_uploaded_csv(contents: bytes) -> pd.DataFrame:
     return read_csv_upload(contents)
+
+
+@st.cache_data(show_spinner=False)
+def compare_reference_models() -> pd.DataFrame:
+    return compare_regression_models(
+        REFERENCE_PARTITIONS,
+        MODEL_ARTIFACT["model"],
+        MODEL_METRICS,
+    )
 
 
 def chart_layout(fig: go.Figure, height: int = 360) -> go.Figure:
@@ -354,51 +364,390 @@ tabs = st.tabs(
         "Reports & Recommendations",
         "Explainable AI",
         "Engineering What-if",
+        "Dataset Management",
     ]
 )
 
 # 1. Executive Overview
 with tabs[0]:
     st.subheader("Executive Overview")
+    st.markdown(
+        "PLL-Smart is an engineering analytics prototype for exploring how early "
+        "parametric measurements can inform PLL RMS-jitter analysis and how measured "
+        "lock time can inform adaptive waiting. Results below are based on the supplied "
+        "**synthetic datasets** and are intended for research and presentation—not "
+        "production test control."
+    )
+    st.error(
+        "**SAFETY INHIBIT — The system ALWAYS recommends RUN FULL JITTER TEST.** "
+        "It never authorizes skipping or removing the full jitter test."
+    )
+
+    st.markdown("#### Synthetic evaluation at a glance")
     show_metrics(
         [
-            ("Original test records", f"{MODEL_METRICS['test_rows']:,}", "supplied test split"),
-            ("Original test MAE", f"{MODEL_METRICS['test_mae_ps']:.4f} ps", None),
-            ("Original test R²", f"{MODEL_METRICS['test_r2']:.4f}", None),
-            ("Lock-wait reduction", f"{LOCK_METRICS['savings_percent']:.2f}%", "synthetic example"),
+            ("Usable held-out test dies", f"{MODEL_METRICS['test_rows']:,}", "synthetic test split"),
+            ("Jitter MAE", f"{MODEL_METRICS['test_mae_ps']:.4f} ps", "lower is better"),
+            ("Jitter RMSE", f"{MODEL_METRICS['test_rmse_ps']:.4f} ps", "held-out test"),
+            ("Jitter R²", f"{MODEL_METRICS['test_r2']:.4f}", "held-out test"),
         ]
     )
-    st.markdown("")
-    left, right = st.columns([1.1, 1])
-    with left:
-        st.markdown("#### Platform workflow")
-        st.markdown(
-            "1. Inspect and validate uploaded PLL measurements.\n"
-            "2. Score valid inputs with the saved HistGradientBoosting model.\n"
-            "3. Add the calibration-only guard band and route uncertain cases to full test.\n"
-            "4. Compare uploaded data with training distributions and inspect warnings.\n"
-            "5. Explore adaptive wait time and export session reports."
-        )
-    with right:
-        st.markdown("#### Original model holdout results")
-        st.write(
-            f"MAE **{MODEL_METRICS['test_mae_ps']:.5f} ps** · "
-            f"RMSE **{MODEL_METRICS['test_rmse_ps']:.5f} ps** · "
-            f"R² **{MODEL_METRICS['test_r2']:.5f}**"
-        )
-        st.write(
-            f"Calibration guard band: **{MODEL_METRICS['guard_band_ps']:.5f} ps** "
-            f"(illustrative alpha {MODEL_METRICS['conformal_alpha_illustrative']:.0%})."
-        )
-        st.write(
-            f"Lock-time comparison: fixed **{LOCK_METRICS['mean_fixed_wait_us']:.2f} µs**, "
-            f"adaptive **{LOCK_METRICS['mean_adaptive_wait_us']:.2f} µs**."
-        )
-    st.info(
-        "Measured retrospective limitation: 52 known failing test dies passed the illustrative "
-        "skip-candidate rule. All batch/manual recommendations retain full-test fallback; "
-        "candidate status is not authorization."
+    show_metrics(
+        [
+            (
+                "Calibration guard band",
+                f"{MODEL_METRICS['guard_band_ps']:.4f} ps",
+                f"illustrative α = {MODEL_METRICS['conformal_alpha_illustrative']:.0%}",
+            ),
+            ("Unsafe skip candidates", f"{MODEL_METRICS['test_skip_candidate_count']:,}", "illustrative rule"),
+            (
+                "Measured failures among candidates",
+                str(MODEL_METRICS["test_failures_among_skip_candidates"]),
+                "full-test inhibit retained",
+            ),
+            (
+                "Mean lock-wait comparison",
+                (
+                    f"{LOCK_METRICS['mean_fixed_wait_us']:.1f} → "
+                    f"{LOCK_METRICS['mean_adaptive_wait_us']:.2f} µs"
+                ),
+                f"{LOCK_METRICS['savings_percent']:.2f}% illustrative reduction",
+            ),
+        ]
     )
+    st.caption(
+        "Saved evaluation values from the supplied synthetic data. Illustrative "
+        "thresholds and retrospective results are not production specifications or qualification."
+    )
+
+    st.markdown("#### Machine-learning workflow")
+    workflow = (
+        "Dataset",
+        "Data Validation",
+        "Feature Processing",
+        "Jitter Prediction",
+        "Calibration",
+        "Engineering Recommendation",
+    )
+    workflow_columns = st.columns(len(workflow))
+    for index, (column, stage) in enumerate(zip(workflow_columns, workflow), start=1):
+        with column:
+            with st.container(border=True):
+                st.caption(f"STEP {index:02d}")
+                st.markdown(f"**{stage}**")
+    st.markdown(
+        "<div style='text-align:center;color:#38d9f5;font-weight:600;"
+        "padding:0 0 0.6rem 0;'>"
+        "Dataset → Data Validation → Feature Processing → Jitter Prediction "
+        "→ Calibration → Engineering Recommendation"
+        "</div>",
+        unsafe_allow_html=True,
+    )
+
+    st.markdown("#### System architecture")
+    architecture = go.Figure()
+
+    def architecture_group(
+        x0: float,
+        y0: float,
+        x1: float,
+        y1: float,
+        title: str,
+        color: str,
+    ) -> None:
+        architecture.add_shape(
+            type="rect",
+            x0=x0,
+            y0=y0,
+            x1=x1,
+            y1=y1,
+            line={"color": color, "width": 1},
+            fillcolor="rgba(16,31,53,0.48)",
+            layer="below",
+        )
+        architecture.add_annotation(
+            x=x0 + 0.16,
+            y=y1 - 0.13,
+            text=f"<b>{title}</b>",
+            showarrow=False,
+            xanchor="left",
+            yanchor="top",
+            font={"size": 10, "color": color},
+        )
+
+    def architecture_node(
+        center_x: float,
+        center_y: float,
+        width: float,
+        height: float,
+        title: str,
+        detail: str,
+        color: str,
+    ) -> None:
+        architecture.add_shape(
+            type="rect",
+            x0=center_x - width / 2,
+            y0=center_y - height / 2,
+            x1=center_x + width / 2,
+            y1=center_y + height / 2,
+            line={"color": color, "width": 1.5},
+            fillcolor="rgba(8,20,38,0.96)",
+            layer="above",
+        )
+        architecture.add_annotation(
+            x=center_x,
+            y=center_y,
+            text=(
+                f"<b>{title}</b><br>"
+                f"<span style='font-size:10px'>{detail}</span>"
+            ),
+            showarrow=False,
+            align="center",
+            font={"size": 12, "color": "#e7eef9"},
+        )
+
+    def architecture_arrow(
+        x0: float,
+        y0: float,
+        x1: float,
+        y1: float,
+        *,
+        color: str = CYAN,
+    ) -> None:
+        architecture.add_annotation(
+            x=x1,
+            y=y1,
+            ax=x0,
+            ay=y0,
+            xref="x",
+            yref="y",
+            axref="x",
+            ayref="y",
+            text="",
+            showarrow=True,
+            arrowhead=2,
+            arrowsize=1,
+            arrowwidth=1.5,
+            arrowcolor=color,
+            opacity=0.9,
+        )
+
+    architecture_group(0.15, 6.15, 1.95, 8.6, "DATA SOURCES", BLUE)
+    architecture_group(2.05, 6.15, 12.15, 8.6, "JITTER MODEL WORKFLOW", CYAN)
+    architecture_group(12.25, 6.15, 14.45, 8.6, "SAFETY CONTROL", "#f0bf68")
+    architecture_group(0.2, 2.35, 11.45, 5.25, "ENGINEERING ANALYTICS · SOFTWARE ONLY", CYAN)
+    architecture_group(11.8, 2.35, 15.3, 5.25, "PRESENTATION OUTPUTS", BLUE)
+
+    main_y = 7.25
+    main_nodes = [
+        (1.05, "Synthetic datasets", "Jitter CSV<br>Lock-time CSV"),
+        (3.1, "Load & validate", "Cached reads<br>Schema, values, ranges"),
+        (5.15, "Feature processing", "Select seven approved<br>pre-test features"),
+        (7.2, "Saved model", "HistGradientBoosting<br>Regressor"),
+        (9.25, "Jitter prediction", "Predicted RMS jitter<br>(ps)"),
+        (11.3, "Calibration", "Stored guard band<br>Upper prediction bound"),
+        (13.35, "Safety decision", "Always RUN FULL<br>JITTER TEST"),
+    ]
+    main_width = 1.7
+    for previous, current in zip(main_nodes, main_nodes[1:]):
+        architecture_arrow(
+            previous[0] + main_width / 2 + 0.03,
+            main_y,
+            current[0] - main_width / 2 - 0.03,
+            main_y,
+        )
+    for center_x, title, detail in main_nodes:
+        architecture_node(
+            center_x,
+            main_y,
+            main_width,
+            1.35,
+            title,
+            detail,
+            "#f0bf68" if title == "Safety decision" else CYAN,
+        )
+
+    analytics_y = 3.75
+    analytics_nodes = [
+        (1.65, "Adaptive lock-time", "Lock-time data<br>Fixed vs adaptive wait"),
+        (4.45, "Data drift", "Uploaded vs training<br>Range and distribution checks"),
+        (7.25, "Explainable AI", "Model-dependent<br>global and per-die analysis"),
+        (10.05, "Engineering what-if", "Compare modified inputs<br>with saved model"),
+    ]
+    analytics_width = 2.25
+    for center_x, title, detail in analytics_nodes:
+        architecture_node(
+            center_x,
+            analytics_y,
+            analytics_width,
+            1.35,
+            title,
+            detail,
+            BLUE if title == "Adaptive lock-time" else CYAN,
+        )
+
+    # Blue arrows denote supporting inputs into the independent analytics.
+    architecture_arrow(1.05, 6.55, 1.65, 4.45, color=BLUE)
+    architecture_arrow(3.1, 6.55, 4.45, 4.45, color=BLUE)
+    architecture_arrow(9.25, 6.55, 7.25, 4.45, color=BLUE)
+    architecture_arrow(9.25, 6.55, 10.05, 4.45, color=BLUE)
+
+    report_x = 13.55
+    architecture_node(
+        report_x,
+        analytics_y,
+        3.25,
+        1.55,
+        "Reporting & visualization",
+        "Dashboard charts and tables<br>JSON · PDF · CSV exports",
+        BLUE,
+    )
+    bus_y = 1.75
+    architecture.add_shape(
+        type="line",
+        x0=1.65,
+        y0=bus_y,
+        x1=13.55,
+        y1=bus_y,
+        line={"color": BLUE, "width": 1.5},
+    )
+    for center_x, _, _ in analytics_nodes:
+        architecture_arrow(center_x, 3.05, center_x, bus_y, color=BLUE)
+    architecture_arrow(13.35, 6.55, 13.55, bus_y, color="#f0bf68")
+    architecture_arrow(13.55, bus_y, 13.55, 2.95, color=BLUE)
+    architecture.add_annotation(
+        x=7.6,
+        y=2.0,
+        text="Analysis results and safety status",
+        showarrow=False,
+        font={"size": 9, "color": MUTED},
+        bgcolor="rgba(8,20,38,0.9)",
+    )
+
+    architecture.update_layout(
+        height=650,
+        paper_bgcolor="rgba(0,0,0,0)",
+        plot_bgcolor="rgba(0,0,0,0)",
+        font={"color": "#c8d6e8", "family": "Segoe UI"},
+        margin={"l": 8, "r": 8, "t": 8, "b": 8},
+        xaxis={"range": [0, 15.6], "visible": False, "fixedrange": True},
+        yaxis={
+            "range": [0.7, 8.8],
+            "visible": False,
+            "fixedrange": True,
+            "scaleanchor": "x",
+            "scaleratio": 1,
+        },
+        showlegend=False,
+    )
+    st.plotly_chart(architecture, width="stretch", config={"displayModeBar": False})
+    st.caption(
+        "Approved model inputs: vco_band_code, ring_osc_ghz, chargepump_ua, "
+        "lock_time_us, vdd_droop_norm, wafer_radius_norm, and leak_screen_norm. "
+        "Actual jitter and synthetic labels are excluded from inference. This is a "
+        "synthetic-data research prototype for offline analysis; it does not connect "
+        "to or control PLL/ATE hardware and is not production-qualified."
+    )
+
+    st.markdown("#### Held-out results")
+    chart_left, chart_right = st.columns([1.35, 1])
+    with chart_left:
+        prediction_sample = ORIGINAL_TEST_PREDICTIONS.sample(
+            n=min(2500, len(ORIGINAL_TEST_PREDICTIONS)),
+            random_state=42,
+        )
+        scatter = go.Figure()
+        scatter.add_trace(
+            go.Scatter(
+                x=prediction_sample["actual_jitter_ps"],
+                y=prediction_sample["predicted_jitter_ps"],
+                mode="markers",
+                name="Synthetic test dies",
+                marker={"color": CYAN, "size": 5, "opacity": 0.48},
+                hovertemplate=(
+                    "Measured: %{x:.3f} ps<br>Predicted: %{y:.3f} ps"
+                    "<extra></extra>"
+                ),
+            )
+        )
+        range_min = float(
+            min(
+                prediction_sample["actual_jitter_ps"].min(),
+                prediction_sample["predicted_jitter_ps"].min(),
+            )
+        )
+        range_max = float(
+            max(
+                prediction_sample["actual_jitter_ps"].max(),
+                prediction_sample["predicted_jitter_ps"].max(),
+            )
+        )
+        scatter.add_trace(
+            go.Scatter(
+                x=[range_min, range_max],
+                y=[range_min, range_max],
+                mode="lines",
+                name="Ideal agreement",
+                line={"color": MUTED, "dash": "dash", "width": 1},
+                hoverinfo="skip",
+            )
+        )
+        scatter.update_layout(
+            title="Measured vs predicted RMS jitter · deterministic sample",
+            xaxis_title="Measured RMS jitter (ps)",
+            yaxis_title="Predicted RMS jitter (ps)",
+            showlegend=False,
+        )
+        st.plotly_chart(chart_layout(scatter, 330), width="stretch")
+    with chart_right:
+        wait_comparison = go.Figure(
+            data=[
+                go.Bar(
+                    x=[
+                        LOCK_METRICS["mean_fixed_wait_us"],
+                        LOCK_METRICS["mean_adaptive_wait_us"],
+                    ],
+                    y=["Fixed wait", "Adaptive wait"],
+                    orientation="h",
+                    marker={"color": [BLUE, CYAN]},
+                    text=[
+                        f"{LOCK_METRICS['mean_fixed_wait_us']:.2f} µs",
+                        f"{LOCK_METRICS['mean_adaptive_wait_us']:.2f} µs",
+                    ],
+                    textposition="outside",
+                    hovertemplate="%{y}: %{x:.2f} µs<extra></extra>",
+                )
+            ]
+        )
+        wait_comparison.update_layout(
+            title="Mean lock-time wait · synthetic dataset",
+            xaxis_title="Wait time (µs)",
+            yaxis_title="",
+            showlegend=False,
+            xaxis={"rangemode": "tozero"},
+        )
+        st.plotly_chart(chart_layout(wait_comparison, 330), width="stretch")
+
+    st.markdown("#### Engineering significance")
+    significance_left, significance_right = st.columns(2)
+    with significance_left:
+        st.markdown(
+            "- **Prediction error:** MAE and RMSE summarize the saved model's "
+            "jitter error on the untouched synthetic test partition.\n"
+            "- **Calibration:** the guard band is added to predictions as an "
+            "illustrative upper bound; it is not a production uncertainty guarantee.\n"
+            "- **Test efficiency study:** adaptive waiting compares dataset means "
+            "under the documented margin-and-cap formula."
+        )
+    with significance_right:
+        st.markdown(
+            "- **Safety evidence:** 52 measured failing dies were present among "
+            "96,121 illustrative skip candidates.\n"
+            "- **Decision:** that finding is why every recommendation remains "
+            "**RUN FULL JITTER TEST**.\n"
+            "- **Interpretation:** these synthetic results motivate further "
+            "validation; they do not demonstrate production qualification or DPPM."
+        )
     if uploaded_frame is not None:
         st.success(f"Active upload: {uploaded_name} · {len(uploaded_frame):,} rows")
     elif upload_error is None:
@@ -407,23 +756,32 @@ with tabs[0]:
 # 2. Dataset Explorer
 with tabs[1]:
     st.subheader("Dataset Explorer")
-    source_choice = st.radio(
+    explorer_options = [
+        "Original: Train partition",
+        "Original: Calibration partition",
+        "Original: Test partition",
+    ]
+    if uploaded_frame is not None:
+        explorer_options.insert(0, "Uploaded jitter dataset")
+    source_choice = st.selectbox(
         "Dataset to inspect",
-        ["Uploaded dataset", "Original training partition"],
-        horizontal=True,
+        explorer_options,
         key="explorer_dataset_source",
-        disabled=uploaded_frame is None,
     )
-    explore_frame = (
-        uploaded_frame
-        if uploaded_frame is not None and source_choice == "Uploaded dataset"
-        else REFERENCE_TRAIN
-    )
-    if explore_frame is None:
-        explore_frame = REFERENCE_TRAIN
+    is_uploaded_exploration = source_choice == "Uploaded jitter dataset"
+    if is_uploaded_exploration:
+        explore_frame = uploaded_frame
+    else:
+        partition_name = (
+            source_choice.split(":", 1)[1]
+            .replace("partition", "")
+            .strip()
+            .lower()
+        )
+        explore_frame = REFERENCE_PARTITIONS[partition_name]
     profile = (
         upload_profile
-        if uploaded_frame is not None and source_choice == "Uploaded dataset"
+        if is_uploaded_exploration and upload_profile is not None
         else dataset_profile(explore_frame)
     )
     show_metrics(
@@ -446,19 +804,25 @@ with tabs[1]:
             st.dataframe(profile["preview"], width="stretch", hide_index=True)
         if uploaded_frame is not None:
             st.markdown("#### Upload validation")
-            st.json(
-                {
-                    "missing_required_columns": upload_validation["missing_columns"],
-                    "invalid_feature_rows": upload_validation["invalid_feature_row_count"],
-                    "duplicate_rows": upload_validation["duplicate_row_count"],
-                    "out_of_training_range_rows": upload_validation[
-                        "out_of_training_range_row_count"
-                    ],
-                    "screen_flagged_rows": upload_validation["screen_flagged_row_count"],
-                    "invalid_numeric_values": upload_validation["invalid_type_counts"],
-                },
-                expanded=False,
-            )
+            if upload_validation is None:
+                st.warning(
+                    upload_processing_error
+                    or "Upload validation is unavailable; no validation conclusions are shown."
+                )
+            else:
+                st.json(
+                    {
+                        "missing_required_columns": upload_validation["missing_columns"],
+                        "invalid_feature_rows": upload_validation["invalid_feature_row_count"],
+                        "duplicate_rows": upload_validation["duplicate_row_count"],
+                        "out_of_training_range_rows": upload_validation[
+                            "out_of_training_range_row_count"
+                        ],
+                        "screen_flagged_rows": upload_validation["screen_flagged_row_count"],
+                        "invalid_numeric_values": upload_validation["invalid_type_counts"],
+                    },
+                    expanded=False,
+                )
     selected_feature = st.selectbox(
         "Feature distribution",
         FEATURE_COLUMNS,
@@ -472,18 +836,16 @@ with tabs[1]:
             pd.DataFrame(
                 {
                     "Value": current_values,
-                    "Dataset": (
-                        "Uploaded" if source_choice == "Uploaded dataset" else "Training"
-                    ),
+                    "Dataset": source_choice,
                 }
             )
         )
-    if uploaded_frame is not None and source_choice == "Uploaded dataset":
+    if is_uploaded_exploration:
         training_values = REFERENCE_TRAIN[selected_feature].sample(
             n=min(8000, len(REFERENCE_TRAIN)), random_state=42
         )
         distribution_rows.append(
-            pd.DataFrame({"Value": training_values, "Dataset": "Training reference"})
+            pd.DataFrame({"Value": training_values, "Dataset": "Original: Train reference"})
         )
     distribution = pd.concat(distribution_rows, ignore_index=True).dropna()
     if not distribution.empty:
@@ -498,7 +860,13 @@ with tabs[1]:
             color_discrete_sequence=[CYAN, BLUE],
         )
         st.plotly_chart(chart_layout(fig), width="stretch")
-    st.caption("The uploaded file is parsed in memory; its original bytes are not modified.")
+    if is_uploaded_exploration:
+        st.caption("The uploaded file is parsed in memory; its original bytes are not modified.")
+    else:
+        st.caption(
+            "Original split labels are preserved. Partitions are displayed independently "
+            "and are not mixed."
+        )
 
 # 3. Batch Prediction
 with tabs[2]:
@@ -879,7 +1247,11 @@ with tabs[5]:
 # 7. Model Performance
 with tabs[6]:
     st.subheader("Model Performance & Comparison")
-    st.caption("Saved model/results are read-only here. No upload triggers model fitting.")
+    st.caption(
+        "Synthetic/illustrative evaluation on the original held-out test partition. "
+        "The saved model remains read-only; comparison estimators fit only on the "
+        "original training partition."
+    )
     show_metrics(
         [
             ("Held-out MAE", f"{MODEL_METRICS['test_mae_ps']:.5f} ps", "original test partition"),
@@ -888,25 +1260,84 @@ with tabs[6]:
             ("Calibration guard band", f"{MODEL_METRICS['guard_band_ps']:.5f} ps", "calibration partition"),
         ]
     )
+    st.markdown("#### Baseline comparison on the same untouched test set")
+    st.info(
+        "DummyRegressor and LinearRegression are simple reference baselines. "
+        "The comparison HistGradientBoostingRegressor is a fresh train-only fit; "
+        "it is distinct from the existing saved model shown in the table. "
+        "Previously reported saved-model holdout metrics are retained alongside "
+        "the current read-only evaluation. No test rows are used for fitting or tuning."
+    )
+    comparison_results = compare_reference_models()
+    display_columns = [
+        "Model",
+        "MAE (ps)",
+        "RMSE (ps)",
+        "R²",
+        "Training rows",
+        "Test rows",
+        "Evaluation",
+    ]
+    previous_columns = [
+        "Previously reported MAE (ps)",
+        "Previously reported RMSE (ps)",
+        "Previously reported R²",
+    ]
+    visible_columns = [
+        column
+        for column in (*display_columns, *previous_columns)
+        if column in comparison_results.columns
+    ]
     st.dataframe(
-        pd.DataFrame(
-            [
-                {
-                    "Model": "Train-mean baseline",
-                    "MAE (ps)": MODEL_METRICS["baseline_test_mae_ps"],
-                    "RMSE (ps)": MODEL_METRICS["baseline_test_rmse_ps"],
-                    "R²": MODEL_METRICS["baseline_test_r2"],
-                },
-                {
-                    "Model": MODEL_METRICS["model"],
-                    "MAE (ps)": MODEL_METRICS["test_mae_ps"],
-                    "RMSE (ps)": MODEL_METRICS["test_rmse_ps"],
-                    "R²": MODEL_METRICS["test_r2"],
-                },
-            ]
+        comparison_results.loc[:, visible_columns].style.format(
+            {
+                column: "{:.5f}"
+                for column in (
+                    "MAE (ps)",
+                    "RMSE (ps)",
+                    "R²",
+                    *previous_columns,
+                )
+                if column in comparison_results.columns
+            }
         ),
         width="stretch",
         hide_index=True,
+    )
+    comparison_left, comparison_right = st.columns(2)
+    with comparison_left:
+        error_metrics = comparison_results.melt(
+            id_vars="Model",
+            value_vars=["MAE (ps)", "RMSE (ps)"],
+            var_name="Metric",
+            value_name="Error (ps)",
+        )
+        comparison_fig = px.bar(
+            error_metrics,
+            x="Model",
+            y="Error (ps)",
+            color="Metric",
+            barmode="group",
+            title="Held-out error metrics (lower is better)",
+            color_discrete_sequence=[CYAN, BLUE],
+        )
+        comparison_fig.update_xaxes(tickangle=-20)
+        st.plotly_chart(chart_layout(comparison_fig), width="stretch")
+    with comparison_right:
+        r2_fig = px.bar(
+            comparison_results,
+            x="Model",
+            y="R²",
+            title="Held-out coefficient of determination",
+            color_discrete_sequence=[CYAN],
+        )
+        r2_fig.add_hline(y=0, line_dash="dash", line_color=MUTED)
+        r2_fig.update_xaxes(tickangle=-20)
+        st.plotly_chart(chart_layout(r2_fig), width="stretch")
+    st.caption(
+        "Every row uses the same validated test partition and the seven approved "
+        "features. These synthetic results are not production qualification; the "
+        "safety layer continues to recommend RUN FULL JITTER TEST."
     )
     visual_left, visual_right = st.columns(2)
     with visual_left:
@@ -1006,31 +1437,161 @@ with tabs[6]:
 # 8. Data Drift Monitoring
 with tabs[7]:
     st.subheader("Data Drift Monitoring")
+    st.caption(
+        "Compares uploaded numeric features with the original training partition. "
+        "Drift warnings are input-distribution monitoring signals, not measured "
+        "prediction failures."
+    )
     if uploaded_frame is None:
         st.info("Upload a CSV with candidate feature columns to compare against training data.")
+    elif (
+        upload_processing_error
+        or upload_validation is None
+        or upload_drift is None
+        or upload_drift_summary is None
+    ):
+        st.error(
+            "Drift analysis is unavailable because uploaded-data analysis did not "
+            "complete. Do not interpret partial results; keep RUN FULL JITTER TEST. "
+            + (upload_processing_error or "")
+        )
     else:
         drift_comparison = upload_drift
         drift_summary = upload_drift_summary
         drift_validation = upload_validation
-        if drift_summary["warning_features"]:
-            st.warning(
-                f"Distribution shift warning on {drift_summary['warning_features']} of "
-                f"{drift_summary['compared_features']} comparable features."
+        missing_required = drift_validation["missing_columns"]
+        missing_feature_values = sum(
+            drift_validation["missing_value_counts"].get(feature, 0)
+            for feature in FEATURE_COLUMNS
+        )
+        invalid_numeric_values = sum(
+            drift_validation["invalid_type_counts"].get(feature, 0)
+            for feature in FEATURE_COLUMNS
+        )
+        if missing_required:
+            st.error(
+                "Incompatible upload schema. Missing approved model feature(s): "
+                + ", ".join(FEATURE_LABELS[feature] for feature in missing_required)
+                + ". No predictions are available for missing inputs."
             )
         else:
-            st.success(drift_summary["status"])
+            st.success(
+                "Upload schema contains all seven approved model features. "
+                "Row-level validation still determines which records can be scored."
+            )
+        if drift_summary["warning_features"]:
+            st.warning(
+                f"Distribution shift indicators were found for "
+                f"{drift_summary['warning_features']} of "
+                f"{drift_summary['compared_features']} comparable features. "
+                "This is not, by itself, evidence of model failure."
+            )
+        else:
+            st.info(drift_summary["status"])
         show_metrics(
             [
                 ("Compared features", str(drift_summary["compared_features"]), None),
+                (
+                    "Insufficient comparison features",
+                    str(drift_summary["insufficient_features"]),
+                    "no finite upload values",
+                ),
                 ("Features with shift warnings", str(drift_summary["warning_features"]), None),
+                (
+                    "Invalid feature rows",
+                    f"{drift_validation['invalid_feature_row_count']:,}",
+                    "not scored",
+                ),
                 (
                     "Out-of-range rows",
                     f"{drift_validation['out_of_training_range_row_count']:,}",
-                    "feature range validation",
+                    "may overlap invalid rows",
+                ),
+                (
+                    "Missing feature values",
+                    f"{missing_feature_values:,}",
+                    f"{len(missing_required)} missing feature columns",
                 ),
             ]
         )
-        st.dataframe(drift_comparison, width="stretch", hide_index=True)
+        validation_left, validation_right = st.columns(2)
+        with validation_left:
+            st.markdown("#### Upload schema and validation")
+            st.write(
+                f"**Columns:** {uploaded_frame.shape[1]} · "
+                f"**Rows:** {len(uploaded_frame):,} · "
+                f"**Raw missing cells:** {int(uploaded_frame.isna().sum().sum()):,}"
+            )
+            st.write(
+                f"**Invalid numeric feature values:** {invalid_numeric_values:,} · "
+                f"**Duplicate rows/IDs:** {drift_validation['duplicate_row_count']:,}"
+            )
+            if missing_required:
+                st.write(
+                    "**Missing required columns:** "
+                    + ", ".join(FEATURE_LABELS[name] for name in missing_required)
+                )
+        with validation_right:
+            st.markdown("#### Feature-level distribution comparison")
+            st.caption(
+                "The existing warning rule flags a feature when an uploaded value is "
+                "outside its saved training range or the two-sided KS-test p-value is "
+                "below 0.01. This monitoring threshold is not a production failure limit."
+            )
+        if drift_comparison.empty:
+            st.info(
+                "No approved features were available for a reference comparison. "
+                "Check the upload schema and numeric values."
+            )
+        else:
+            shifted_features: list[str] = []
+            for _, feature_row in drift_comparison.iterrows():
+                if feature_row["drift_warning"] != "SHIFT WARNING":
+                    continue
+                feature = feature_row["feature"]
+                reasons: list[str] = []
+                out_of_range_percent = feature_row.get(
+                    "out_of_training_range_percent", np.nan
+                )
+                ks_p_value = feature_row.get("ks_p_value", np.nan)
+                if pd.notna(out_of_range_percent) and out_of_range_percent > 0:
+                    reasons.append(
+                        f"{out_of_range_percent:.2f}% outside the training range"
+                    )
+                if pd.notna(ks_p_value) and ks_p_value < 0.01:
+                    reasons.append(f"KS p-value {ks_p_value:.3g} < 0.01")
+                shifted_features.append(
+                    f"**{FEATURE_LABELS.get(feature, feature)}**: "
+                    + ("; ".join(reasons) if reasons else "shift indicator")
+                )
+            if shifted_features:
+                st.warning(
+                    "Features with distribution-shift indicators:\n\n"
+                    + "\n\n".join(f"- {item}" for item in shifted_features)
+                )
+            drift_display = drift_comparison.copy()
+            drift_display["feature"] = drift_display["feature"].map(
+                lambda feature: FEATURE_LABELS.get(feature, feature)
+            )
+            drift_display = drift_display.rename(
+                columns={
+                    "feature": "Feature",
+                    "uploaded_count": "Uploaded numeric values",
+                    "training_count": "Training numeric values",
+                    "training_mean": "Training mean",
+                    "uploaded_mean": "Uploaded mean",
+                    "mean_change": "Mean change",
+                    "mean_change_percent": "Mean change (%)",
+                    "training_std": "Training standard deviation",
+                    "uploaded_std": "Uploaded standard deviation",
+                    "std_change": "Standard deviation change",
+                    "ks_statistic": "KS statistic",
+                    "ks_p_value": "KS p-value",
+                    "out_of_training_range_percent": "Outside training range (%)",
+                    "drift_warning": "Distribution indicator",
+                }
+            )
+            st.dataframe(drift_display, width="stretch", hide_index=True)
         available = [feature for feature in FEATURE_COLUMNS if feature in uploaded_frame]
         if available:
             choice = st.selectbox(
@@ -1038,8 +1599,13 @@ with tabs[7]:
                 available,
                 format_func=lambda value: FEATURE_LABELS[value],
                 key="drift_feature",
+                help="Compare the uploaded feature distribution with the original training partition.",
             )
-            values = pd.to_numeric(uploaded_frame[choice], errors="coerce").dropna()
+            values = (
+                pd.to_numeric(uploaded_frame[choice], errors="coerce")
+                .replace([np.inf, -np.inf], np.nan)
+                .dropna()
+            )
             training_sample = REFERENCE_TRAIN[choice].sample(
                 n=min(10000, len(REFERENCE_TRAIN)), random_state=42
             )
@@ -1058,18 +1624,29 @@ with tabs[7]:
                 histnorm="probability density",
                 opacity=0.58,
                 title=f"Training vs uploaded · {FEATURE_LABELS[choice]}",
+                labels={
+                    "value": FEATURE_LABELS[choice],
+                    "dataset": "Dataset",
+                    "density": "Probability density",
+                },
                 color_discrete_sequence=[BLUE, CYAN],
             )
+            fig.update_xaxes(title_text=FEATURE_LABELS[choice])
+            fig.update_yaxes(title_text="Probability density")
             st.plotly_chart(chart_layout(fig), width="stretch")
         st.caption(
-            "KS p-values and range-exceedance rates are monitoring signals only. "
-            "A drift warning does not prove model failure; no warning does not establish safety."
+            "Missing/out-of-range/duplicate records are validation findings, not prediction "
+            "errors. No uploaded actual measurements are used as model inputs. A shift warning "
+            "does not prove model failure; absence of a warning does not establish safety."
         )
 
 # 9. Prediction History
 with tabs[8]:
     st.subheader("Prediction History")
-    st.caption("History is stored in this Streamlit browser session only; it is not database-backed.")
+    st.caption(
+        "History is session-based and is not permanent database storage. It is cleared "
+        "when the session is cleared or expires."
+    )
     history = pd.DataFrame(st.session_state["prediction_history"])
     if history.empty:
         st.info("Manual and batch predictions in this session will appear here.")
@@ -1087,7 +1664,56 @@ with tabs[8]:
             view_history = view_history.loc[
                 view_history["validation_status"].eq(validation_filter)
             ]
-        st.dataframe(view_history, width="stretch", hide_index=True, height=440)
+        history_columns = [
+            "timestamp_utc",
+            "source",
+            "die_id",
+            "predicted_jitter_ps",
+            "guard_band_ps",
+            "upper_prediction_bound_ps",
+            "validation_status",
+            "recommendation",
+            "reason",
+        ]
+        visible_history_columns = [
+            column for column in history_columns if column in view_history.columns
+        ]
+        history_display = view_history.loc[:, visible_history_columns].copy()
+        if "timestamp_utc" in history_display.columns:
+            history_display["timestamp_utc"] = pd.to_datetime(
+                history_display["timestamp_utc"], errors="coerce", utc=True
+            )
+        if "die_id" in history_display.columns:
+            history_display["die_id"] = history_display["die_id"].astype("string")
+        st.dataframe(
+            history_display,
+            width="stretch",
+            hide_index=True,
+            height=440,
+            column_config={
+                "timestamp_utc": st.column_config.DatetimeColumn(
+                    "Prediction timestamp (UTC)",
+                    format="YYYY-MM-DD HH:mm:ss",
+                ),
+                "die_id": st.column_config.TextColumn(
+                    "Die identifier",
+                    help="Present when the input record supplied a die_id.",
+                ),
+                "predicted_jitter_ps": st.column_config.NumberColumn(
+                    "Predicted jitter (ps)", format="%.5f"
+                ),
+                "upper_prediction_bound_ps": st.column_config.NumberColumn(
+                    "Upper prediction bound (ps)", format="%.5f"
+                ),
+                "recommendation": st.column_config.TextColumn(
+                    "Final engineering recommendation"
+                ),
+            },
+        )
+        st.caption(
+            "The final recommendation is always RUN FULL JITTER TEST. The upper bound "
+            "is the prediction plus the illustrative calibration guard band."
+        )
         st.download_button(
             "Export visible history CSV",
             safe_csv_download(view_history),
@@ -1195,7 +1821,16 @@ with tabs[9]:
         "Validate on representative lot-held-out production data before considering test changes.",
         "Review invalid inputs, out-of-range features, and drift warnings before interpreting predictions.",
     ]
-    if uploaded_frame is not None:
+    if uploaded_frame is not None and (
+        upload_validation is None or upload_drift_summary is None
+    ):
+        report_warnings.append(
+            "Uploaded jitter analysis did not complete; uploaded metrics are unavailable."
+        )
+        report_recommendations.append(
+            "Do not act on incomplete upload analysis; RUN FULL JITTER TEST."
+        )
+    elif uploaded_frame is not None:
         uploaded_validation = upload_validation
         if "split" in uploaded_frame.columns:
             split_values = set(
@@ -1277,6 +1912,11 @@ with tabs[9]:
         "recommendations": report_recommendations,
     }
     report_exports = build_engineering_report_exports(report_payload)
+    st.caption(
+        "JSON, PDF, and CSV are generated from the same timestamped report snapshot. "
+        "They include the available dataset/model metrics and synthetic-data/full-test "
+        "safety warnings; absent optional measurements are reported as unavailable."
+    )
     st.download_button(
         "Download engineering report data (JSON)",
         report_exports["json"],
@@ -1550,3 +2190,332 @@ with tabs[11]:
                     + ", ".join(decision["out_of_training_range_features"])
                     + "."
                 )
+
+# 13. Dataset Management
+with tabs[12]:
+    st.subheader("Dataset Management")
+    st.info(
+        "Reference datasets are loaded read-only. New uploads are parsed and analyzed "
+        "separately in memory; uploading data never replaces a reference CSV or retrains "
+        "the saved model."
+    )
+
+    st.markdown("### Jitter Measurement Dataset")
+    jitter_source_loaded = JITTER_DATA_PATH.is_file() and bool(REFERENCE_PARTITIONS)
+    if jitter_source_loaded:
+        jitter_loaded_frame = pd.concat(
+            [
+                REFERENCE_PARTITIONS[name]
+                for name in ("train", "calibration", "test")
+            ],
+            ignore_index=True,
+        )
+        jitter_source_columns = list(REFERENCE_PARTITIONS["train"].columns)
+        jitter_schema = pd.DataFrame(
+            {
+                "Data type": REFERENCE_PARTITIONS["train"].dtypes.astype(str),
+                "Missing values (usable rows)": jitter_loaded_frame.isna().sum(),
+            }
+        )
+        jitter_describe = jitter_loaded_frame.describe(
+            include="all"
+        ).transpose()
+        jitter_missing_usable = int(jitter_loaded_frame.isna().sum().sum())
+    else:
+        jitter_loaded_frame = pd.DataFrame()
+        jitter_source_columns = []
+        jitter_schema = pd.DataFrame()
+        jitter_describe = pd.DataFrame()
+        jitter_missing_usable = 0
+
+    jitter_source_rows = int(
+        sum(REFERENCE_DIAGNOSTICS["raw_partition_counts"].values())
+    )
+    jitter_source_invalid = int(REFERENCE_DIAGNOSTICS["invalid_row_count"])
+    jitter_partition_rows = [
+        {
+            "Partition": name.title(),
+            "Raw rows": REFERENCE_DIAGNOSTICS["raw_partition_counts"][name],
+            "Usable rows": REFERENCE_DIAGNOSTICS["usable_partition_counts"][name],
+        }
+        for name in ("train", "calibration", "test")
+    ]
+    st.markdown(f"**Source:** `{JITTER_DATA_PATH.name}`")
+    st.success(
+        f"Reference dataset loaded successfully · {jitter_source_rows:,} source rows · "
+        f"{len(jitter_source_columns)} columns"
+        if jitter_source_loaded
+        else "Reference jitter dataset did not load."
+    )
+    show_metrics(
+        [
+            ("Source rows", f"{jitter_source_rows:,}", None),
+            ("Columns", f"{len(jitter_source_columns):,}", None),
+            ("Missing values", f"{jitter_missing_usable:,}", "usable loaded rows"),
+            ("Invalid records excluded", f"{jitter_source_invalid:,}", "loader validation"),
+        ]
+    )
+    partition_left, partition_right = st.columns([1, 1.4])
+    with partition_left:
+        st.markdown("#### Preserved source partitions")
+        st.dataframe(
+            pd.DataFrame(jitter_partition_rows),
+            width="stretch",
+            hide_index=True,
+        )
+        if jitter_source_invalid:
+            st.caption(
+                "The raw partition counts are preserved. Invalid records are excluded "
+                "from usable partition frames; the negative lock-time record is reported "
+                "by the loader."
+            )
+    with partition_right:
+        st.markdown("#### Source schema and data types")
+        st.dataframe(jitter_schema, width="stretch")
+    with st.expander("Jitter dataset descriptive statistics"):
+        st.dataframe(jitter_describe, width="stretch")
+
+    st.markdown("#### Optional jitter dataset upload")
+    jitter_management_upload = st.file_uploader(
+        "Upload a separate jitter-measurement CSV",
+        type=["csv"],
+        key="dataset_management_jitter_upload",
+        help=(
+            "Requires all seven approved model feature columns. Scoring uses the saved "
+            "model and existing validation; this upload does not retrain."
+        ),
+    )
+    if jitter_management_upload is not None:
+        try:
+            management_jitter_frame = load_uploaded_csv(
+                jitter_management_upload.getvalue()
+            )
+            missing_model_features = [
+                feature
+                for feature in FEATURE_COLUMNS
+                if feature not in management_jitter_frame.columns
+            ]
+            st.markdown(f"**Uploaded file:** `{jitter_management_upload.name}`")
+            show_metrics(
+                [
+                    ("Upload rows", f"{len(management_jitter_frame):,}", None),
+                    ("Upload columns", f"{len(management_jitter_frame.columns):,}", None),
+                    (
+                        "Missing values",
+                        f"{int(management_jitter_frame.isna().sum().sum()):,}",
+                        "raw upload",
+                    ),
+                    (
+                        "Required features missing",
+                        str(len(missing_model_features)),
+                        None,
+                    ),
+                ]
+            )
+            if missing_model_features:
+                st.error(
+                    "Incompatible jitter schema. Missing model features: "
+                    + ", ".join(missing_model_features)
+                    + ". No predictions were generated."
+                )
+            else:
+                managed_batch, managed_summary, _ = predict_batch(
+                    management_jitter_frame,
+                    MODEL_ARTIFACT["model"],
+                    MODEL_ARTIFACT,
+                    global_safety_inhibit=SAFETY_INHIBIT,
+                )
+                managed_invalid = managed_batch.loc[
+                    ~managed_batch["feature_valid"]
+                ]
+                if managed_summary["invalid_records"]:
+                    st.warning(
+                        f"Schema compatible; {managed_summary['invalid_records']:,} "
+                        "records failed feature validation and were not predicted. "
+                        "Valid records remain full-test only."
+                    )
+                else:
+                    st.success(
+                        "Jitter schema compatible; all records passed feature validation. "
+                        "Every recommendation remains RUN FULL JITTER TEST."
+                    )
+                show_metrics(
+                    [
+                        (
+                            "Successfully predicted",
+                            f"{managed_summary['successfully_predicted_records']:,}",
+                            None,
+                        ),
+                        ("Invalid records", f"{managed_summary['invalid_records']:,}", None),
+                        (
+                            "Mean predicted jitter",
+                            format_metric(
+                                managed_summary["mean_predicted_jitter_ps"], " ps"
+                            ),
+                            None,
+                        ),
+                        (
+                            "Illustrative candidate rows",
+                            f"{managed_summary['illustrative_candidate_skip_records']:,}",
+                            "not a skip authorization",
+                        ),
+                    ]
+                )
+                if not managed_invalid.empty:
+                    st.dataframe(
+                        managed_invalid[
+                            [
+                                "die_id_display",
+                                "validation_status",
+                                "validation_reasons",
+                            ]
+                        ].head(100),
+                        width="stretch",
+                        hide_index=True,
+                    )
+                st.dataframe(
+                    managed_batch[
+                        [
+                            "die_id_display",
+                            "predicted_jitter_ps",
+                            "upper_prediction_bound_ps",
+                            "validation_status",
+                            "recommendation",
+                        ]
+                    ].head(100),
+                    width="stretch",
+                    hide_index=True,
+                )
+                st.caption(
+                    "Showing at most 100 scored rows. The upload is independent of the "
+                    "sidebar jitter upload and is not saved over project files."
+                )
+        except (ValueError, TypeError, KeyError) as error:
+            st.error(
+                f"Jitter upload rejected or could not be analyzed: {error}. "
+                "The reference dataset and saved model were not changed."
+            )
+
+    st.divider()
+    st.markdown("### Lock-Time Dataset")
+    lock_source_loaded = LOCKTIME_DATA_PATH.is_file() and not REFERENCE_LOCK_ROWS.empty
+    lock_source_columns = [
+        "die_id",
+        "lock_time_us",
+        "fixed_wait_us",
+        "adaptive_wait_us",
+    ]
+    lock_source_frame = REFERENCE_LOCK_ROWS.loc[
+        :, [column for column in lock_source_columns if column in REFERENCE_LOCK_ROWS]
+    ].copy()
+    lock_source_schema = pd.DataFrame(
+        {
+            "Data type": lock_source_frame.dtypes.astype(str),
+            "Missing values (usable rows)": lock_source_frame.isna().sum(),
+        }
+    )
+    lock_source_missing = int(lock_source_frame.isna().sum().sum())
+    st.markdown(f"**Source:** `{LOCKTIME_DATA_PATH.name}`")
+    st.success(
+        f"Reference dataset loaded successfully · "
+        f"{LOCK_METRICS['raw_rows']:,} source rows · "
+        f"{len(lock_source_columns)} columns"
+        if lock_source_loaded
+        else "Reference lock-time dataset did not load."
+    )
+    show_metrics(
+        [
+            ("Source rows", f"{LOCK_METRICS['raw_rows']:,}", None),
+            ("Columns", f"{len(lock_source_columns):,}", None),
+            ("Missing values", f"{lock_source_missing:,}", "usable loaded rows"),
+            ("Invalid records excluded", f"{LOCK_METRICS['invalid_rows']:,}", "lock-time validation"),
+        ]
+    )
+    lock_schema_left, lock_schema_right = st.columns([1, 1.4])
+    with lock_schema_left:
+        st.markdown("#### Lock-time validation")
+        st.write(
+            f"Formula mismatches against the recomputed adaptive wait: "
+            f"**{LOCK_METRICS['formula_mismatches']:,}**."
+        )
+        st.caption(
+            "Uploaded lock times are analyzed using the existing illustrative "
+            "`min(lock_time_us + margin, fixed_wait)` calculation."
+        )
+    with lock_schema_right:
+        st.markdown("#### Source schema and data types")
+        st.dataframe(lock_source_schema, width="stretch")
+    with st.expander("Lock-time dataset descriptive statistics"):
+        st.dataframe(lock_source_frame.describe(include="all").transpose(), width="stretch")
+
+    st.markdown("#### Optional lock-time dataset upload")
+    lock_management_upload = st.file_uploader(
+        "Upload a separate lock-time CSV",
+        type=["csv"],
+        key="dataset_management_locktime_upload",
+        help=(
+            "Requires a lock_time_us column. Jitter measurement datasets are not accepted "
+            "as lock-time-only uploads."
+        ),
+    )
+    if lock_management_upload is not None:
+        try:
+            management_lock_frame = load_uploaded_csv(
+                lock_management_upload.getvalue()
+            )
+            jitter_signatures = {
+                TARGET_COLUMN,
+                "actual_jitter_ps",
+                "split",
+                "jitter_fail",
+                "defect_injected",
+            }
+            if "lock_time_us" not in management_lock_frame.columns:
+                st.error(
+                    "Incompatible lock-time schema: required column `lock_time_us` "
+                    "is missing. No lock-time analysis was run."
+                )
+            elif jitter_signatures.intersection(management_lock_frame.columns) or set(
+                FEATURE_COLUMNS
+            ).issubset(management_lock_frame.columns):
+                st.error(
+                    "This upload appears to be a jitter measurement dataset, not a "
+                    "lock-time dataset. Use the jitter upload control instead."
+                )
+            else:
+                managed_lock_rows, managed_lock_summary = analyze_locktime_values(
+                    management_lock_frame["lock_time_us"]
+                )
+                st.markdown(f"**Uploaded file:** `{lock_management_upload.name}`")
+                st.success(
+                    "Lock-time schema compatible. Values were validated and processed "
+                    "in memory; no files or model artifacts were changed."
+                )
+                show_metrics(
+                    [
+                        ("Upload rows", f"{managed_lock_summary['total_records']:,}", None),
+                        ("Valid lock times", f"{managed_lock_summary['valid_records']:,}", None),
+                        ("Invalid lock times", f"{managed_lock_summary['invalid_records']:,}", None),
+                        (
+                            "Mean adaptive wait",
+                            format_metric(
+                                managed_lock_summary["mean_adaptive_wait_us"], " µs"
+                            ),
+                            "illustrative",
+                        ),
+                    ]
+                )
+                st.dataframe(
+                    managed_lock_rows.head(100),
+                    width="stretch",
+                    hide_index=True,
+                )
+                st.caption(
+                    "Showing at most 100 calculated rows. Invalid values are retained "
+                    "in the validation output but excluded from summary calculations."
+                )
+        except (ValueError, TypeError, KeyError) as error:
+            st.error(
+                f"Lock-time upload rejected or could not be analyzed: {error}. "
+                "The reference dataset was not changed."
+            )

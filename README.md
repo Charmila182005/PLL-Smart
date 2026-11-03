@@ -30,10 +30,16 @@ production tests or changing test programs.
 
 ## Main features
 
-- Dark engineering dashboard with 12 sections: executive overview, dataset
+- Dark engineering dashboard with 13 sections: executive overview, dataset
   explorer, batch prediction, manual prediction, actual-vs-predicted analysis,
   adaptive lock-time, model performance, drift monitoring, session history,
-  reports/recommendations, Explainable AI, and engineering what-if.
+  reports/recommendations, Explainable AI, engineering what-if, and dataset
+  management.
+- Dataset Management displays both reference dataset schemas, partitions,
+  validation counts and descriptive summaries, and supports independent
+  in-memory jitter and lock-time uploads without retraining.
+- Dataset Explorer supports separate inspection of the original train,
+  calibration, and test partitions while retaining uploaded-jitter exploration.
 - CSV validation for required features, missing and invalid values, duplicate
   rows, and training-range violations.
 - Batch and manual inference from the saved model; uploads never retrain it.
@@ -130,6 +136,26 @@ wait of 60.0 µs, mean adaptive wait of 17.5493 µs, and illustrative average
 reduction of 70.7511%. These are dataset calculations, not production
 qualification results.
 
+### Baseline comparison
+
+The Model Performance tab compares all models on the same 99,999 usable rows
+from the original held-out test partition. DummyRegressor, LinearRegression,
+and a fresh HistGradientBoostingRegressor comparison fit use only the original
+60,000-row training partition for fitting and the same seven approved inputs.
+The existing saved model is scored read-only and is never refit by the
+dashboard.
+
+| Model | MAE (ps) | RMSE (ps) | R² |
+|---|---:|---:|---:|
+| DummyRegressor (mean) | 0.162471 | 0.205602 | -0.000012 |
+| LinearRegression | 0.056832 | 0.081022 | 0.844707 |
+| HistGradientBoostingRegressor (fresh comparison fit) | 0.057078 | 0.079667 | 0.849857 |
+| Existing saved HistGradientBoostingRegressor (read-only) | 0.057078 | 0.079667 | 0.849857 |
+
+These are synthetic/illustrative results only. The fresh comparison estimator
+does not replace or persist over the saved model, and the test partition is not
+used for fitting or tuning.
+
 ## Safety restrictions
 
 - A global safety inhibit is enforced in the low-level decision helper.
@@ -193,9 +219,17 @@ Do not expose a production test-control interface based on this prototype.
 
 ## Screenshots
 
-No screenshots are currently included. Add reviewed dashboard captures under
-`docs/screenshots/` before publication if desired. Ensure captures contain no
-private data or credentials and retain the synthetic-data disclaimer.
+No screenshots have been captured or included. Capture these from the running
+application before publication; do not use mockups or generated screenshots:
+
+1. Executive Overview, including the architecture and prominent full-test notice.
+2. Dataset Management, showing both reference datasets and partition counts.
+3. Model Performance, including the baseline comparison table and charts.
+4. Data Drift Monitoring, using a clearly synthetic example upload.
+5. Reports & Recommendations, showing the export options and safety disclaimer.
+
+Save reviewed captures under `docs/screenshots/`. Ensure they contain no private
+data or credentials and retain the synthetic-data disclaimer.
 
 ## Proposed GitHub file manifest
 
@@ -230,9 +264,9 @@ test-prediction file contribute most of the download size.
 - `AI_Optimized_PLL_Test_Time_Reduction.pdf`: not required at runtime; its
   distribution rights/proprietary status need confirmation before publication.
 
-The current workspace is not a Git repository, so this is a proposed
-publication manifest rather than a verified Git index/status listing. Review
-rights and provenance for all supplied datasets and artifacts before pushing.
+This manifest was checked against the existing Git index; no commit, push, or
+deployment was performed for this audit. Review rights and provenance for all
+supplied datasets and artifacts before publishing.
 
 ## License
 
@@ -250,6 +284,10 @@ choosing a license or publishing.
   lot-held-out evaluation.
 - Session prediction history is not persistent across sessions.
 - Drift statistics are triage warnings, not proof of failure or safety.
+- The drift tab compares uploaded feature distributions against the original
+  training partition. Its implemented warning condition is an out-of-training-
+  range observation or two-sided KS-test p-value below 0.01; this is a monitoring
+  indicator, not an approved model-failure threshold.
 - No wafer map is shown because validated spatial coordinate and wafer
   identity data are not supplied.
 

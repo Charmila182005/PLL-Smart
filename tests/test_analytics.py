@@ -10,12 +10,14 @@ import pytest
 from pypdf import PdfReader
 from sklearn.base import BaseEstimator, RegressorMixin
 
+import analytics as analytics_module
 from analytics import (
     analyze_locktime_values,
     append_history_entry,
     append_history_entries,
     compare_actual_predictions,
     compare_feature_distributions,
+    compare_regression_models,
     compare_what_if_predictions,
     compute_global_feature_importance,
     create_history_entry,
@@ -72,6 +74,116 @@ def valid_frame(size: int = 3) -> pd.DataFrame:
     data = {name: np.full(size, 1.0) for name in FEATURE_COLUMNS}
     data["die_id"] = np.arange(101, 101 + size)
     return pd.DataFrame(data)
+
+
+def regression_partitions() -> dict[str, pd.DataFrame]:
+    partitions: dict[str, pd.DataFrame] = {}
+    next_die_id = 1000
+    for name, size, offset in (
+        ("train", 12, 0.0),
+        ("calibration", 5, 20.0),
+        ("test", 7, 40.0),
+    ):
+        frame = pd.DataFrame(
+            {
+                feature: np.linspace(0.1, 0.9, size) + offset
+                for feature in FEATURE_COLUMNS
+            }
+        )
+        frame["rms_jitter_ps"] = np.linspace(0.8, 1.8, size)
+        frame["split"] = name
+        frame["die_id"] = np.arange(next_die_id, next_die_id + size)
+        frame["predicted_jitter_ps"] = 99.0
+        frame["actual_jitter_ps"] = 98.0
+        frame["defect_injected"] = 1
+        frame["usl_ps"] = 2.2
+        partitions[name] = frame
+        next_die_id += size
+    return partitions
+
+
+def test_model_comparison_fits_only_approved_features_on_train_and_reads_saved_model(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    fit_calls: list[tuple[pd.DataFrame, pd.Series]] = []
+    predict_columns: list[list[str]] = []
+
+    class RecordingEstimator:
+        def __init__(self, *_: object, **__: object) -> None:
+            self.mean_target = 0.0
+
+        def fit(
+            self, features: pd.DataFrame, target: pd.Series
+        ) -> "RecordingEstimator":
+            fit_calls.append((features.copy(deep=True), target.copy(deep=True)))
+            self.mean_target = float(target.mean())
+            return self
+
+        def predict(self, features: pd.DataFrame) -> np.ndarray:
+            predict_columns.append(list(features.columns))
+            return np.full(len(features), self.mean_target)
+
+    class ReadOnlySavedModel:
+        def fit(self, *_: object, **__: object) -> None:
+            raise AssertionError("The saved model must never be fit.")
+
+        def predict(self, features: pd.DataFrame) -> np.ndarray:
+            predict_columns.append(list(features.columns))
+            return np.full(len(features), 1.25)
+
+    monkeypatch.setattr(analytics_module, "DummyRegressor", RecordingEstimator)
+    monkeypatch.setattr(analytics_module, "LinearRegression", RecordingEstimator)
+    monkeypatch.setattr(analytics_module, "create_model", RecordingEstimator)
+    partitions = regression_partitions()
+    original_partitions = {
+        name: frame.copy(deep=True) for name, frame in partitions.items()
+    }
+
+    results = compare_regression_models(
+        partitions,
+        ReadOnlySavedModel(),
+        {
+            "train_rows": len(partitions["train"]),
+            "test_mae_ps": 0.12,
+            "test_rmse_ps": 0.18,
+            "test_r2": 0.7,
+        },
+    )
+
+    assert len(fit_calls) == 3
+    for fitted_features, fitted_target in fit_calls:
+        assert list(fitted_features.columns) == list(FEATURE_COLUMNS)
+        pd.testing.assert_frame_equal(
+            fitted_features.reset_index(drop=True),
+            partitions["train"].loc[:, FEATURE_COLUMNS].reset_index(drop=True),
+        )
+        pd.testing.assert_series_equal(
+            fitted_target.reset_index(drop=True),
+            partitions["train"]["rms_jitter_ps"].reset_index(drop=True),
+            check_names=False,
+        )
+    assert predict_columns == [list(FEATURE_COLUMNS)] * 4
+    assert results["Training rows"].tolist() == [12, 12, 12, 12]
+    assert results["Test rows"].tolist() == [7, 7, 7, 7]
+    saved_row = results.loc[
+        results["Model"].eq("Existing saved HistGradientBoostingRegressor")
+    ].iloc[0]
+    assert saved_row["MAE (ps)"] == pytest.approx(
+        np.mean(np.abs(partitions["test"]["rms_jitter_ps"].to_numpy() - 1.25))
+    )
+    assert saved_row["Previously reported MAE (ps)"] == pytest.approx(0.12)
+    assert saved_row["Previously reported RMSE (ps)"] == pytest.approx(0.18)
+    assert saved_row["Previously reported R²"] == pytest.approx(0.7)
+    for name, original in original_partitions.items():
+        pd.testing.assert_frame_equal(partitions[name], original)
+
+
+def test_model_comparison_rejects_mislabeled_partitions() -> None:
+    partitions = regression_partitions()
+    partitions["test"].loc[:, "split"] = "calibration"
+
+    with pytest.raises(ValueError, match="inconsistent split labels"):
+        compare_regression_models(partitions, FixedModel())
 
 
 def test_read_csv_upload_accepts_valid_csv_without_saving_it() -> None:
@@ -361,6 +473,7 @@ def test_manual_prediction_validation_and_actual_error_history() -> None:
     assert result["illustrative_candidate_skip"]
 
     history = create_history_entry(features, result, actual_jitter_ps=1.2)
+    assert history["die_id"] == features["die_id"]
     assert history["actual_jitter_ps"] == pytest.approx(1.2)
     assert history["signed_error_ps"] == pytest.approx(0.3)
     assert history["absolute_error_ps"] == pytest.approx(0.3)
@@ -372,6 +485,24 @@ def test_manual_prediction_validation_and_actual_error_history() -> None:
     assert append_history_entries([], [history, history], maximum_entries=1) == [history]
     with pytest.raises(ValueError):
         append_history_entry([], history, maximum_entries=0)
+
+
+def test_history_entry_without_identifier_keeps_optional_id_empty() -> None:
+    features = {name: 1.0 for name in FEATURE_COLUMNS}
+    entry = create_history_entry(
+        features,
+        {
+            "predicted_jitter_ps": 1.2,
+            "guard_band_ps": 0.1,
+            "upper_bound_ps": 1.3,
+            "recommendation": "RUN FULL JITTER TEST",
+        },
+    )
+
+    assert entry["die_id"] is None
+    assert entry["timestamp_utc"]
+    assert entry["upper_prediction_bound_ps"] == pytest.approx(1.3)
+    assert entry["recommendation"] == "RUN FULL JITTER TEST"
 
 
 def test_actual_comparison_metrics_and_largest_errors() -> None:
@@ -434,6 +565,25 @@ def test_drift_comparison_and_summary_detect_out_of_range_shift() -> None:
     assert shifted["drift_warning"] == "SHIFT WARNING"
     assert summary["warning_features"] >= 1
     assert "not proof" in summary["interpretation"]
+
+
+def test_drift_summary_does_not_report_invalid_data_as_no_shift() -> None:
+    baseline = pd.DataFrame(
+        {name: np.linspace(0.0, 1.0, 10) for name in FEATURE_COLUMNS}
+    )
+    uploaded = pd.DataFrame(
+        {name: ["not numeric"] * 3 for name in FEATURE_COLUMNS}
+    )
+    ranges = {name: (0.0, 1.0) for name in FEATURE_COLUMNS}
+
+    comparison = compare_feature_distributions(uploaded, baseline, ranges)
+    summary = summarize_drift(comparison)
+
+    assert comparison["drift_warning"].eq("INSUFFICIENT DATA").all()
+    assert summary["status"] == "NOT ENOUGH COMPARABLE FEATURES"
+    assert summary["compared_features"] == 0
+    assert summary["insufficient_features"] == len(FEATURE_COLUMNS)
+    assert summary["warning_features"] == 0
 
 
 def test_locktime_batch_invalid_inputs_statistics_and_cap() -> None:

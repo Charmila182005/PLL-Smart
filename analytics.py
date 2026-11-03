@@ -10,6 +10,8 @@ from typing import Any, Mapping, Sequence
 import numpy as np
 import pandas as pd
 from scipy.stats import ks_2samp
+from sklearn.dummy import DummyRegressor
+from sklearn.linear_model import LinearRegression
 from sklearn.inspection import permutation_importance
 from sklearn.metrics import mean_absolute_error, mean_squared_error, r2_score
 
@@ -25,6 +27,134 @@ from data_utils import (
     decide_jitter_test,
     _safety_inhibit_reason,
 )
+from train import create_model
+
+
+def compare_regression_models(
+    partitions: Mapping[str, pd.DataFrame],
+    saved_model: Any,
+    saved_metrics: Mapping[str, Any] | None = None,
+) -> pd.DataFrame:
+    """Compare training-only baselines with a read-only saved model on one test split."""
+    required_partitions = ("train", "calibration", "test")
+    missing_partitions = [
+        name for name in required_partitions if name not in partitions
+    ]
+    if missing_partitions:
+        raise ValueError(
+            "Missing required partition(s): " + ", ".join(missing_partitions)
+        )
+
+    clean_partitions: dict[str, pd.DataFrame] = {}
+    seen_die_ids: set[Any] = set()
+    for name in required_partitions:
+        frame = partitions[name]
+        if not isinstance(frame, pd.DataFrame) or frame.empty:
+            raise ValueError(f"The {name} partition must be a non-empty DataFrame.")
+        if "split" in frame.columns:
+            labels = frame["split"].dropna().astype(str).str.lower().unique()
+            if len(labels) != 1 or labels[0] != name:
+                raise ValueError(
+                    f"The {name} partition contains inconsistent split labels."
+                )
+        required_columns = [*FEATURE_COLUMNS, TARGET_COLUMN]
+        missing_columns = [
+            column for column in required_columns if column not in frame.columns
+        ]
+        if missing_columns:
+            raise ValueError(
+                f"The {name} partition is missing required columns: "
+                + ", ".join(missing_columns)
+            )
+
+        model_frame = frame.loc[:, list(FEATURE_COLUMNS)].apply(
+            pd.to_numeric, errors="coerce"
+        )
+        targets = pd.to_numeric(frame[TARGET_COLUMN], errors="coerce")
+        x_values = model_frame.to_numpy(dtype=float)
+        y_values = targets.to_numpy(dtype=float, na_value=np.nan)
+        if not np.isfinite(x_values).all() or not np.isfinite(y_values).all():
+            raise ValueError(f"The {name} partition contains non-finite model data.")
+        if model_frame["lock_time_us"].lt(0).any():
+            raise ValueError(f"The {name} partition contains negative lock times.")
+        if "die_id" in frame.columns:
+            if frame["die_id"].duplicated().any():
+                raise ValueError(f"The {name} partition contains duplicate die IDs.")
+            ids = set(frame["die_id"].tolist())
+            if seen_die_ids.intersection(ids):
+                raise ValueError("Die IDs overlap across the supplied partitions.")
+            seen_die_ids.update(ids)
+
+        clean_frame = frame.copy(deep=True)
+        clean_frame.loc[:, list(FEATURE_COLUMNS)] = model_frame
+        clean_frame[TARGET_COLUMN] = targets
+        clean_partitions[name] = clean_frame
+
+    train = clean_partitions["train"]
+    test = clean_partitions["test"]
+    x_train = train.loc[:, list(FEATURE_COLUMNS)]
+    y_train = train[TARGET_COLUMN].astype(float)
+    x_test = test.loc[:, list(FEATURE_COLUMNS)]
+    y_test = test[TARGET_COLUMN].astype(float).to_numpy()
+
+    fitted_models = (
+        ("DummyRegressor (mean)", DummyRegressor(strategy="mean")),
+        ("LinearRegression", LinearRegression()),
+        ("HistGradientBoostingRegressor (comparison fit)", create_model()),
+    )
+    rows: list[dict[str, Any]] = []
+    for model_name, estimator in fitted_models:
+        estimator.fit(x_train, y_train)
+        predictions = np.asarray(estimator.predict(x_test), dtype=float).reshape(-1)
+        if predictions.size != len(y_test) or not np.isfinite(predictions).all():
+            raise ValueError(
+                f"{model_name} returned invalid or misaligned test predictions."
+            )
+        rows.append(
+            {
+                "Model": model_name,
+                "MAE (ps)": float(mean_absolute_error(y_test, predictions)),
+                "RMSE (ps)": float(np.sqrt(mean_squared_error(y_test, predictions))),
+                "R²": float(r2_score(y_test, predictions)),
+                "Training rows": len(x_train),
+                "Test rows": len(x_test),
+                "Evaluation": "Fresh estimator fit on train only",
+            }
+        )
+
+    saved_predictions = np.asarray(
+        saved_model.predict(x_test), dtype=float
+    ).reshape(-1)
+    if (
+        saved_predictions.size != len(y_test)
+        or not np.isfinite(saved_predictions).all()
+    ):
+        raise ValueError(
+            "The saved model returned invalid or misaligned test predictions."
+        )
+    saved_row: dict[str, Any] = {
+        "Model": "Existing saved HistGradientBoostingRegressor",
+        "MAE (ps)": float(mean_absolute_error(y_test, saved_predictions)),
+        "RMSE (ps)": float(np.sqrt(mean_squared_error(y_test, saved_predictions))),
+        "R²": float(r2_score(y_test, saved_predictions)),
+        "Training rows": (
+            int(saved_metrics["train_rows"])
+            if saved_metrics and "train_rows" in saved_metrics
+            else len(train)
+        ),
+        "Test rows": len(x_test),
+        "Evaluation": "Saved model; read-only inference",
+    }
+    if saved_metrics:
+        saved_row["Previously reported MAE (ps)"] = float(
+            saved_metrics["test_mae_ps"]
+        )
+        saved_row["Previously reported RMSE (ps)"] = float(
+            saved_metrics["test_rmse_ps"]
+        )
+        saved_row["Previously reported R²"] = float(saved_metrics["test_r2"])
+    rows.append(saved_row)
+    return pd.DataFrame(rows)
 
 
 def read_csv_upload(contents: bytes) -> pd.DataFrame:
@@ -636,16 +766,24 @@ def summarize_drift(comparison: pd.DataFrame) -> dict[str, Any]:
             "status": "NOT ENOUGH COMPARABLE FEATURES",
             "warning_features": 0,
             "compared_features": 0,
+            "insufficient_features": 0,
         }
     warning_count = int(comparison["drift_warning"].eq("SHIFT WARNING").sum())
+    insufficient_count = int(
+        comparison["drift_warning"].eq("INSUFFICIENT DATA").sum()
+    )
+    compared_count = int(len(comparison) - insufficient_count)
     return {
         "status": (
-            "DISTRIBUTION SHIFT WARNING"
+            "NOT ENOUGH COMPARABLE FEATURES"
+            if compared_count == 0
+            else "DISTRIBUTION SHIFT WARNING"
             if warning_count
             else "NO STRONG SHIFT WARNING"
         ),
         "warning_features": warning_count,
-        "compared_features": int(len(comparison)),
+        "compared_features": compared_count,
+        "insufficient_features": insufficient_count,
         "interpretation": (
             "Distribution checks are monitoring indicators, not proof that model "
             "performance has changed."
@@ -742,6 +880,7 @@ def create_history_entry(
     return {
         "timestamp_utc": datetime.now(timezone.utc).isoformat(timespec="seconds"),
         "source": source,
+        "die_id": features.get("die_id"),
         **{name: features.get(name) for name in FEATURE_COLUMNS},
         "predicted_jitter_ps": predicted,
         "guard_band_ps": prediction.get("guard_band_ps"),
