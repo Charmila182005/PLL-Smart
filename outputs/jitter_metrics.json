@@ -1,0 +1,50 @@
+{
+  "model": "HistGradientBoostingRegressor",
+  "features": [
+    "vco_band_code",
+    "ring_osc_ghz",
+    "chargepump_ua",
+    "lock_time_us",
+    "vdd_droop_norm",
+    "wafer_radius_norm",
+    "leak_screen_norm"
+  ],
+  "target": "rms_jitter_ps",
+  "train_rows": 60000,
+  "calibration_rows": 40000,
+  "calibration_screen_passing_rows": 39038,
+  "test_rows": 99999,
+  "conformal_alpha_illustrative": 0.05,
+  "guard_band_ps": 0.14862561671455876,
+  "illustrative_usl_ps": 2.2,
+  "illustrative_screen_threshold": 2.0,
+  "test_mae_ps": 0.057078135504148,
+  "test_rmse_ps": 0.07966679600239317,
+  "test_r2": 0.8498574642358308,
+  "baseline_test_mae_ps": 0.16247135173931743,
+  "baseline_test_rmse_ps": 0.20560238873081915,
+  "baseline_test_r2": -1.233268921430053e-05,
+  "fit_seconds": 2.5695921999868006,
+  "test_skip_candidate_count": 96121,
+  "test_skip_candidate_rate": 0.961219612196122,
+  "test_failures_among_skip_candidates": 52,
+  "evaluation_note": "Synthetic-data holdout evaluation only; not production qualification or a DPPM guarantee.",
+  "data_quality": {
+    "raw_partition_counts": {
+      "train": 60000,
+      "calibration": 40000,
+      "test": 100000
+    },
+    "usable_partition_counts": {
+      "train": 60000,
+      "calibration": 40000,
+      "test": 99999
+    },
+    "invalid_row_count": 1,
+    "invalid_by_partition": {
+      "train": 0,
+      "calibration": 0,
+      "test": 1
+    }
+  }
+}

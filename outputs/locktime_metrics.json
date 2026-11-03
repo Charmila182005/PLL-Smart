@@ -1,0 +1,10 @@
+{
+  "raw_rows": 20000,
+  "usable_rows": 20000,
+  "invalid_rows": 0,
+  "formula_mismatches": 0,
+  "mean_fixed_wait_us": 60.0,
+  "mean_adaptive_wait_us": 17.5493136,
+  "mean_savings_us": 42.450686399999995,
+  "savings_percent": 70.751144
+}

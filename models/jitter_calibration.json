@@ -1,0 +1,8 @@
+{
+  "guard_band_ps": 0.14862561671455876,
+  "conformal_alpha_illustrative": 0.05,
+  "calibration_screen_passing_rows": 39038,
+  "illustrative_usl_ps": 2.2,
+  "illustrative_screen_threshold": 2.0,
+  "note": "Synthetic-data calibration artifact; not a production limit or DPPM guarantee."
+}

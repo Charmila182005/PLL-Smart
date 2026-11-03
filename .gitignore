@@ -1,0 +1,60 @@
+# Python and test caches
+__pycache__/
+**/__pycache__/
+*.py[cod]
+.pytest_cache/
+.coverage
+htmlcov/
+
+# Virtual environments and local configuration/secrets
+.venv/
+venv/
+env/
+.env
+.env.*
+!.env.example
+.streamlit/secrets.toml
+
+# Temporary files, editor backups, and logs
+*.tmp
+*.temp
+*.tmp.*
+*.temp.*
+*.partial
+*.download
+*.bak
+*.swp
+*.swo
+*~
+*.log
+
+# Generated engineering reports and artifacts
+pll_smart_engineering_report.*
+engineering_report.*
+/f[1-5]_*.png
+/stats.txt
+
+# Keep only the runtime datasets. Do not accidentally publish other exports.
+/data/*
+!/data/synthetic_pll_jitter_dataset.csv
+!/data/synthetic_pll_locktime_dataset.csv
+!/data/generate_synthetic_pll_data.py
+
+# Keep only the model and calibration pair consumed by the application.
+/models/*
+!/models/jitter_model.joblib
+!/models/jitter_calibration.json
+
+# Keep only saved evaluation files consumed by the dashboard.
+/outputs/*
+!/outputs/jitter_metrics.json
+!/outputs/locktime_metrics.json
+!/outputs/test_predictions.csv
+
+# Local copies / empty duplicate extensions
+/README.md.txt
+/requirements.txt.txt
+
+# Original requirement document is not needed at runtime; publish only after
+# confirming its distribution rights.
+/AI_Optimized_PLL_Test_Time_Reduction.pdf
