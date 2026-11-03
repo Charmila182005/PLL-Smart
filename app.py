@@ -103,6 +103,59 @@ st.markdown(
         padding: 13px 16px; color: #f9dfa5; margin: 9px 0 16px 0;
     }}
     .status-card {{ background: {PANEL}; border: 1px solid #1b3450; border-radius: 12px; padding: 15px; }}
+    .arch-diagram {{ color: #e7eef9; }}
+    .arch-panel {{
+        background: #0c192c; border: 1px solid #1b3450; border-radius: 14px;
+        padding: 18px; margin: 12px 0;
+    }}
+    .arch-panel-title {{
+        color: {CYAN}; font-size: .78rem; font-weight: 700;
+        letter-spacing: .08em; margin: 0 0 12px 0;
+    }}
+    .arch-flow {{
+        display: grid; grid-template-columns: minmax(0, 1fr);
+        justify-items: stretch; max-width: 900px; margin: 0 auto;
+    }}
+    .arch-node {{
+        min-width: 0; background: #101f35; border: 1px solid #28415e;
+        border-left: 4px solid {CYAN}; border-radius: 10px;
+        padding: 11px 15px; overflow-wrap: anywhere;
+    }}
+    .arch-node.safety {{
+        background: #292518; border-color: #77552a; border-left-color: #f0bf68;
+    }}
+    .arch-node.output {{ border-left-color: {BLUE}; }}
+    .arch-step {{
+        display: block; color: {MUTED}; font-size: .68rem;
+        font-weight: 700; letter-spacing: .08em; margin-bottom: 3px;
+    }}
+    .arch-node strong {{ display: block; color: #f4f8ff; font-size: .96rem; }}
+    .arch-node span:last-child {{
+        display: block; color: #a9bad0; font-size: .82rem;
+        line-height: 1.4; margin-top: 3px;
+    }}
+    .arch-arrow {{
+        color: {CYAN}; font-size: 1.25rem; font-weight: 700;
+        line-height: 1; text-align: center; padding: 5px 0;
+    }}
+    .arch-branch-label {{
+        color: {MUTED}; font-size: .84rem; line-height: 1.45;
+        margin: 0 0 12px 0;
+    }}
+    .arch-analytics {{
+        display: grid; grid-template-columns: repeat(2, minmax(0, 1fr));
+        gap: 10px;
+    }}
+    .arch-analytics .arch-node {{ border-left-color: {BLUE}; height: 100%; box-sizing: border-box; }}
+    .arch-endpoints {{
+        display: grid; grid-template-columns: repeat(2, minmax(0, 1fr));
+        gap: 12px; margin-top: 12px;
+    }}
+    @media (max-width: 640px) {{
+        .arch-panel {{ padding: 13px; }}
+        .arch-analytics, .arch-endpoints {{ grid-template-columns: minmax(0, 1fr); }}
+        .arch-node {{ padding: 10px 12px; }}
+    }}
     div[data-testid="stTabs"] button {{ color: #9fb3cb; }}
     div[data-testid="stTabs"] button[aria-selected="true"] {{
         color: {CYAN}; border-bottom-color: {CYAN};
@@ -445,202 +498,102 @@ with tabs[0]:
     )
 
     st.markdown("#### System architecture")
-    architecture = go.Figure()
+    st.markdown(
+        """
+        <section class="arch-diagram" aria-label="PLL-Smart system architecture">
+          <div class="arch-panel">
+            <div class="arch-panel-title">DATA FLOW · JITTER PREDICTION · SAFETY CONTROL</div>
+            <div class="arch-flow">
+              <div class="arch-node">
+                <span class="arch-step">01 · INPUT DATA</span>
+                <strong>Synthetic PLL datasets</strong>
+                <span>Jitter measurements and lock-time CSVs</span>
+              </div>
+              <div class="arch-arrow" aria-hidden="true">↓</div>
+              <div class="arch-node">
+                <span class="arch-step">02 · DATA VALIDATION</span>
+                <strong>Load and validate</strong>
+                <span>Cached reads, schema checks, numeric validation and training-range checks</span>
+              </div>
+              <div class="arch-arrow" aria-hidden="true">↓</div>
+              <div class="arch-node">
+                <span class="arch-step">03 · APPROVED INPUTS</span>
+                <strong>Feature processing</strong>
+                <span>Exactly seven pre-test model features; actual jitter and ground-truth labels are excluded</span>
+              </div>
+              <div class="arch-arrow" aria-hidden="true">↓</div>
+              <div class="arch-node">
+                <span class="arch-step">04 · TRAINED ARTIFACT</span>
+                <strong>Saved HistGradientBoostingRegressor</strong>
+                <span>Loaded for inference; dashboard uploads do not retrain it</span>
+              </div>
+              <div class="arch-arrow" aria-hidden="true">↓</div>
+              <div class="arch-node">
+                <span class="arch-step">05 · MODEL OUTPUT</span>
+                <strong>Jitter prediction</strong>
+                <span>Predicted RMS jitter in picoseconds</span>
+              </div>
+              <div class="arch-arrow" aria-hidden="true">↓</div>
+              <div class="arch-node">
+                <span class="arch-step">06 · UNCERTAINTY</span>
+                <strong>Calibration guard band</strong>
+                <span>Stored calibration residual guard band and upper prediction bound</span>
+              </div>
+              <div class="arch-arrow" aria-hidden="true">↓</div>
+              <div class="arch-node safety">
+                <span class="arch-step">07 · CENTRAL SAFETY LAYER</span>
+                <strong>ALWAYS RUN FULL JITTER TEST</strong>
+                <span>No skip authorization; missing, invalid or out-of-range inputs fail safe</span>
+              </div>
+            </div>
+          </div>
 
-    def architecture_group(
-        x0: float,
-        y0: float,
-        x1: float,
-        y1: float,
-        title: str,
-        color: str,
-    ) -> None:
-        architecture.add_shape(
-            type="rect",
-            x0=x0,
-            y0=y0,
-            x1=x1,
-            y1=y1,
-            line={"color": color, "width": 1},
-            fillcolor="rgba(16,31,53,0.48)",
-            layer="below",
-        )
-        architecture.add_annotation(
-            x=x0 + 0.16,
-            y=y1 - 0.13,
-            text=f"<b>{title}</b>",
-            showarrow=False,
-            xanchor="left",
-            yanchor="top",
-            font={"size": 10, "color": color},
-        )
-
-    def architecture_node(
-        center_x: float,
-        center_y: float,
-        width: float,
-        height: float,
-        title: str,
-        detail: str,
-        color: str,
-    ) -> None:
-        architecture.add_shape(
-            type="rect",
-            x0=center_x - width / 2,
-            y0=center_y - height / 2,
-            x1=center_x + width / 2,
-            y1=center_y + height / 2,
-            line={"color": color, "width": 1.5},
-            fillcolor="rgba(8,20,38,0.96)",
-            layer="above",
-        )
-        architecture.add_annotation(
-            x=center_x,
-            y=center_y,
-            text=(
-                f"<b>{title}</b><br>"
-                f"<span style='font-size:10px'>{detail}</span>"
-            ),
-            showarrow=False,
-            align="center",
-            font={"size": 12, "color": "#e7eef9"},
-        )
-
-    def architecture_arrow(
-        x0: float,
-        y0: float,
-        x1: float,
-        y1: float,
-        *,
-        color: str = CYAN,
-    ) -> None:
-        architecture.add_annotation(
-            x=x1,
-            y=y1,
-            ax=x0,
-            ay=y0,
-            xref="x",
-            yref="y",
-            axref="x",
-            ayref="y",
-            text="",
-            showarrow=True,
-            arrowhead=2,
-            arrowsize=1,
-            arrowwidth=1.5,
-            arrowcolor=color,
-            opacity=0.9,
-        )
-
-    architecture_group(0.15, 6.15, 1.95, 8.6, "DATA SOURCES", BLUE)
-    architecture_group(2.05, 6.15, 12.15, 8.6, "JITTER MODEL WORKFLOW", CYAN)
-    architecture_group(12.25, 6.15, 14.45, 8.6, "SAFETY CONTROL", "#f0bf68")
-    architecture_group(0.2, 2.35, 11.45, 5.25, "ENGINEERING ANALYTICS · SOFTWARE ONLY", CYAN)
-    architecture_group(11.8, 2.35, 15.3, 5.25, "PRESENTATION OUTPUTS", BLUE)
-
-    main_y = 7.25
-    main_nodes = [
-        (1.05, "Synthetic datasets", "Jitter CSV<br>Lock-time CSV"),
-        (3.1, "Load & validate", "Cached reads<br>Schema, values, ranges"),
-        (5.15, "Feature processing", "Select seven approved<br>pre-test features"),
-        (7.2, "Saved model", "HistGradientBoosting<br>Regressor"),
-        (9.25, "Jitter prediction", "Predicted RMS jitter<br>(ps)"),
-        (11.3, "Calibration", "Stored guard band<br>Upper prediction bound"),
-        (13.35, "Safety decision", "Always RUN FULL<br>JITTER TEST"),
-    ]
-    main_width = 1.7
-    for previous, current in zip(main_nodes, main_nodes[1:]):
-        architecture_arrow(
-            previous[0] + main_width / 2 + 0.03,
-            main_y,
-            current[0] - main_width / 2 - 0.03,
-            main_y,
-        )
-    for center_x, title, detail in main_nodes:
-        architecture_node(
-            center_x,
-            main_y,
-            main_width,
-            1.35,
-            title,
-            detail,
-            "#f0bf68" if title == "Safety decision" else CYAN,
-        )
-
-    analytics_y = 3.75
-    analytics_nodes = [
-        (1.65, "Adaptive lock-time", "Lock-time data<br>Fixed vs adaptive wait"),
-        (4.45, "Data drift", "Uploaded vs training<br>Range and distribution checks"),
-        (7.25, "Explainable AI", "Model-dependent<br>global and per-die analysis"),
-        (10.05, "Engineering what-if", "Compare modified inputs<br>with saved model"),
-    ]
-    analytics_width = 2.25
-    for center_x, title, detail in analytics_nodes:
-        architecture_node(
-            center_x,
-            analytics_y,
-            analytics_width,
-            1.35,
-            title,
-            detail,
-            BLUE if title == "Adaptive lock-time" else CYAN,
-        )
-
-    # Blue arrows denote supporting inputs into the independent analytics.
-    architecture_arrow(1.05, 6.55, 1.65, 4.45, color=BLUE)
-    architecture_arrow(3.1, 6.55, 4.45, 4.45, color=BLUE)
-    architecture_arrow(9.25, 6.55, 7.25, 4.45, color=BLUE)
-    architecture_arrow(9.25, 6.55, 10.05, 4.45, color=BLUE)
-
-    report_x = 13.55
-    architecture_node(
-        report_x,
-        analytics_y,
-        3.25,
-        1.55,
-        "Reporting & visualization",
-        "Dashboard charts and tables<br>JSON · PDF · CSV exports",
-        BLUE,
+          <div class="arch-panel">
+            <div class="arch-panel-title">SUPPORTING ENGINEERING ANALYTICS · SOFTWARE ONLY</div>
+            <p class="arch-branch-label">
+              Read-only analysis uses the supplied datasets, validated uploads and saved-model
+              outputs. These modules do not control PLL or ATE hardware.
+            </p>
+            <div class="arch-analytics">
+              <div class="arch-node">
+                <span class="arch-step">LOCK-TIME DATA</span>
+                <strong>Adaptive lock-time comparison</strong>
+                <span>Fixed-wait versus calculated adaptive-wait analysis</span>
+              </div>
+              <div class="arch-node">
+                <span class="arch-step">UPLOAD VS TRAINING</span>
+                <strong>Data drift monitoring</strong>
+                <span>Feature distribution, validation and range indicators</span>
+              </div>
+              <div class="arch-node">
+                <span class="arch-step">SAVED MODEL</span>
+                <strong>Explainable AI</strong>
+                <span>Model-dependent global importance and per-die analysis</span>
+              </div>
+              <div class="arch-node">
+                <span class="arch-step">SAVED MODEL</span>
+                <strong>Engineering what-if</strong>
+                <span>Compare controlled input scenarios without changing artifacts</span>
+              </div>
+            </div>
+            <div class="arch-arrow" aria-hidden="true">↓</div>
+            <div class="arch-endpoints">
+              <div class="arch-node output">
+                <span class="arch-step">PRESENTATION</span>
+                <strong>Reporting and visualization</strong>
+                <span>Dashboard charts, tables, and JSON, PDF and CSV exports</span>
+              </div>
+              <div class="arch-node safety">
+                <span class="arch-step">SAFETY STATUS INCLUDED</span>
+                <strong>RUN FULL JITTER TEST</strong>
+                <span>Safety warnings remain visible in engineering outputs</span>
+              </div>
+            </div>
+          </div>
+        </section>
+        """,
+        unsafe_allow_html=True,
     )
-    bus_y = 1.75
-    architecture.add_shape(
-        type="line",
-        x0=1.65,
-        y0=bus_y,
-        x1=13.55,
-        y1=bus_y,
-        line={"color": BLUE, "width": 1.5},
-    )
-    for center_x, _, _ in analytics_nodes:
-        architecture_arrow(center_x, 3.05, center_x, bus_y, color=BLUE)
-    architecture_arrow(13.35, 6.55, 13.55, bus_y, color="#f0bf68")
-    architecture_arrow(13.55, bus_y, 13.55, 2.95, color=BLUE)
-    architecture.add_annotation(
-        x=7.6,
-        y=2.0,
-        text="Analysis results and safety status",
-        showarrow=False,
-        font={"size": 9, "color": MUTED},
-        bgcolor="rgba(8,20,38,0.9)",
-    )
-
-    architecture.update_layout(
-        height=650,
-        paper_bgcolor="rgba(0,0,0,0)",
-        plot_bgcolor="rgba(0,0,0,0)",
-        font={"color": "#c8d6e8", "family": "Segoe UI"},
-        margin={"l": 8, "r": 8, "t": 8, "b": 8},
-        xaxis={"range": [0, 15.6], "visible": False, "fixedrange": True},
-        yaxis={
-            "range": [0.7, 8.8],
-            "visible": False,
-            "fixedrange": True,
-            "scaleanchor": "x",
-            "scaleratio": 1,
-        },
-        showlegend=False,
-    )
-    st.plotly_chart(architecture, width="stretch", config={"displayModeBar": False})
     st.caption(
         "Approved model inputs: vco_band_code, ring_osc_ghz, chargepump_ua, "
         "lock_time_us, vdd_droop_norm, wafer_radius_norm, and leak_screen_norm. "
