@@ -52,11 +52,11 @@ MODEL_PATH = ROOT / "models" / "jitter_model.joblib"
 METRICS_PATH = ROOT / "outputs" / "jitter_metrics.json"
 PREDICTIONS_PATH = ROOT / "outputs" / "test_predictions.csv"
 LOCK_METRICS_PATH = ROOT / "outputs" / "locktime_metrics.json"
-NAVY = "#081426"
-PANEL = "#101f35"
-CYAN = "#38d9f5"
-BLUE = "#6b9cff"
-MUTED = "#93a4bd"
+NAVY = "#06151B"
+PANEL = "#092832"
+CYAN = "#19D5E8"
+BLUE = "#00AFA3"
+MUTED = "#91B2BC"
 SAFETY_INHIBIT = GLOBAL_SAFETY_INHIBIT_REASON
 FEATURE_LABELS = {
     "vco_band_code": "VCO band code",
@@ -76,90 +76,320 @@ st.set_page_config(
 )
 
 st.markdown(
-    f"""
+    """
     <style>
-    :root {{ color-scheme: dark; }}
-    .stApp {{ background: {NAVY}; color: #e7eef9; }}
-    html, body, [class*="css"] {{ font-family: 'Segoe UI', sans-serif; }}
-    h1, h2, h3 {{ font-family: 'Segoe UI', sans-serif; font-weight: 650; letter-spacing: -.025em; }}
-    h1 {{ color: #f4f8ff; }}
-    [data-testid="stSidebar"] {{ background: #0c192c; border-right: 1px solid #1b2e49; }}
-    [data-testid="stMetric"] {{
-        background: {PANEL}; border: 1px solid #1b3450; border-radius: 14px;
-        padding: 15px 18px; min-height: 108px;
-    }}
-    [data-testid="stMetricLabel"] {{ color: {MUTED}; }}
-    [data-testid="stMetricValue"] {{ color: #f1f7ff; font-weight: 650; }}
-    .hero {{
-        background: linear-gradient(112deg, #102641 0%, #0c1a2e 62%, #103044 100%);
-        border: 1px solid #1d4058; border-radius: 18px; padding: 24px 28px;
-        margin: 4px 0 18px 0;
-    }}
-    .eyebrow {{ color: {CYAN}; font-size: .73rem; font-weight: 700; letter-spacing: .15em; }}
-    .hero p {{ color: #a9bad0; margin-bottom: 0; }}
-    .small-note {{ color: {MUTED}; font-size: .84rem; }}
-    .warning-box {{
-        background: #332819; border: 1px solid #77552a; border-radius: 12px;
-        padding: 13px 16px; color: #f9dfa5; margin: 9px 0 16px 0;
-    }}
-    .status-card {{ background: {PANEL}; border: 1px solid #1b3450; border-radius: 12px; padding: 15px; }}
-    .arch-diagram {{ color: #e7eef9; }}
-    .arch-panel {{
-        background: #0c192c; border: 1px solid #1b3450; border-radius: 14px;
-        padding: 18px; margin: 12px 0;
-    }}
-    .arch-panel-title {{
-        color: {CYAN}; font-size: .78rem; font-weight: 700;
-        letter-spacing: .08em; margin: 0 0 12px 0;
-    }}
-    .arch-flow {{
-        display: grid; grid-template-columns: minmax(0, 1fr);
-        justify-items: stretch; max-width: 900px; margin: 0 auto;
-    }}
-    .arch-node {{
-        min-width: 0; background: #101f35; border: 1px solid #28415e;
-        border-left: 4px solid {CYAN}; border-radius: 10px;
-        padding: 11px 15px; overflow-wrap: anywhere;
-    }}
-    .arch-node.safety {{
-        background: #292518; border-color: #77552a; border-left-color: #f0bf68;
-    }}
-    .arch-node.output {{ border-left-color: {BLUE}; }}
-    .arch-step {{
-        display: block; color: {MUTED}; font-size: .68rem;
-        font-weight: 700; letter-spacing: .08em; margin-bottom: 3px;
-    }}
-    .arch-node strong {{ display: block; color: #f4f8ff; font-size: .96rem; }}
-    .arch-node span:last-child {{
-        display: block; color: #a9bad0; font-size: .82rem;
-        line-height: 1.4; margin-top: 3px;
-    }}
-    .arch-arrow {{
-        color: {CYAN}; font-size: 1.25rem; font-weight: 700;
-        line-height: 1; text-align: center; padding: 5px 0;
-    }}
-    .arch-branch-label {{
-        color: {MUTED}; font-size: .84rem; line-height: 1.45;
-        margin: 0 0 12px 0;
-    }}
-    .arch-analytics {{
-        display: grid; grid-template-columns: repeat(2, minmax(0, 1fr));
-        gap: 10px;
-    }}
-    .arch-analytics .arch-node {{ border-left-color: {BLUE}; height: 100%; box-sizing: border-box; }}
-    .arch-endpoints {{
-        display: grid; grid-template-columns: repeat(2, minmax(0, 1fr));
-        gap: 12px; margin-top: 12px;
-    }}
-    @media (max-width: 640px) {{
-        .arch-panel {{ padding: 13px; }}
-        .arch-analytics, .arch-endpoints {{ grid-template-columns: minmax(0, 1fr); }}
-        .arch-node {{ padding: 10px 12px; }}
-    }}
-    div[data-testid="stTabs"] button {{ color: #9fb3cb; }}
-    div[data-testid="stTabs"] button[aria-selected="true"] {{
-        color: {CYAN}; border-bottom-color: {CYAN};
-    }}
+    :root { color-scheme: dark; }
+    .stApp {
+        background: #06151B;
+        color: #EAF7FA;
+    }
+    html, body, [class*="css"] { font-family: Inter, "Segoe UI", sans-serif; }
+    h1, h2, h3, h4 { color: #EAF7FA; letter-spacing: -.025em; }
+    h1 { font-weight: 760; }
+    h2, h3 { font-weight: 680; }
+    p, li { color: #B7D0D6; }
+    [data-testid="stHeader"] { background: rgba(6, 21, 27, .94); }
+    [data-testid="stToolbar"] { right: 1rem; }
+    [data-testid="stMain"] > div { background: #06151B; }
+    .block-container {
+        width: 100%;
+        max-width: none;
+        padding: .85rem 1.5rem 1.1rem;
+    }
+    [data-testid="stVerticalBlock"] {
+        gap: .68rem;
+    }
+    [data-testid="stSidebar"] {
+        background: #071D25;
+        border-right: 1px solid #17414B;
+    }
+    section[data-testid="stSidebar"][aria-expanded="true"] {
+        width: 264px !important;
+        min-width: 264px !important;
+    }
+    [data-testid="stSidebar"] > div:first-child { padding: .7rem .65rem .85rem; }
+    [data-testid="stSidebar"] [data-testid="stVerticalBlock"] { gap: .38rem; }
+    [data-testid="stMetric"] {
+        background: #092832;
+        border: 1px solid #174650;
+        border-radius: 12px;
+        padding: 11px 13px;
+        min-height: 84px;
+        box-shadow: 0 5px 14px rgba(0, 0, 0, .12);
+    }
+    [data-testid="stMetricLabel"] { color: #C5D5DF; font-size: .8rem; }
+    [data-testid="stMetricValue"] { color: #EAF7FA; font-weight: 720; }
+    [data-testid="stMetricDelta"] { font-size: .78rem; }
+    .hero {
+        position: relative;
+        display: flex;
+        align-items: center;
+        justify-content: space-between;
+        gap: 1rem;
+        overflow: hidden;
+        min-height: 102px;
+        background: #092832;
+        border: 1px solid #17616D;
+        border-radius: 11px;
+        padding: 13px 20px;
+        margin: 0 0 8px;
+        box-shadow: 0 5px 15px rgba(0, 0, 0, .12);
+    }
+    .hero-copy { position: relative; z-index: 1; }
+    .hero [data-testid="stHeadingWithActionElements"] {
+        margin: 0 !important;
+        padding: 0 !important;
+    }
+    .hero [data-testid="stHeaderActionElements"] { display: none !important; }
+    .eyebrow {
+        color: #19D5E8;
+        font-size: .68rem;
+        font-weight: 800;
+        letter-spacing: .16em;
+    }
+    .hero h1 {
+        margin: 0;
+        padding: 0;
+        line-height: 1.15;
+        font-size: clamp(1.65rem, 2.3vw, 2.05rem);
+    }
+    .hero p { color: #C5D5DF; margin: 0; font-size: .86rem; }
+    .hero-chip-art { flex: 0 0 144px; width: 144px; height: 88px; opacity: .9; }
+    .kpi-card {
+        display: flex;
+        align-items: center;
+        gap: 13px;
+        min-height: 76px;
+        box-sizing: border-box;
+        padding: 10px 13px;
+        background: #092832;
+        border: 1px solid #174650;
+        border-radius: 11px;
+        box-shadow: inset 0 1px 0 rgba(25, 213, 232, .04), 0 7px 20px rgba(0,0,0,.13);
+    }
+    .kpi-icon {
+        display: grid;
+        place-items: center;
+        flex: 0 0 38px;
+        width: 38px;
+        height: 38px;
+        border: 1px solid #177080;
+        border-radius: 9px;
+        color: #19D5E8;
+        background: rgba(25, 213, 232, .06);
+    }
+    .kpi-icon svg { width: 21px; height: 21px; stroke: currentColor; }
+    .kpi-label { color: #C5D5DF; font-size: .75rem; margin-bottom: 3px; }
+    .kpi-value { color: #EAF7FA; font-size: 1.18rem; font-weight: 740; line-height: 1.15; }
+    .kpi-detail { color: #AFC4CE; font-size: .7rem; margin-top: 3px; }
+    .warning-box {
+        background: #241F16;
+        border: 1px solid #8A642E;
+        border-left: 4px solid #F2BD63;
+        border-radius: 10px;
+        padding: 9px 13px;
+        color: #F8E3B7;
+        margin: 8px 0 11px;
+        font-size: .82rem;
+        line-height: 1.4;
+    }
+    .small-note { color: #C5D5DF; font-size: .76rem; }
+    .status-card {
+        background: #092832;
+        border: 1px solid #174650;
+        border-radius: 11px;
+        padding: 9px 11px;
+    }
+    .sidebar-brand {
+        color: #EAF7FA;
+        font-size: 1rem;
+        font-weight: 780;
+        letter-spacing: .04em;
+        margin: 0;
+    }
+    .sidebar-brand-mark { color: #19D5E8; margin-right: 7px; }
+    .sidebar-subtitle { color: #C5D5DF; font-size: .74rem; margin: 2px 0 5px; }
+    [data-testid="stSidebar"] [data-testid="stRadio"] [role="radiogroup"] {
+        gap: 2px;
+    }
+    [data-testid="stSidebar"] [data-testid="stRadio"] [role="radiogroup"] > label[data-baseweb="radio"] {
+        min-height: 31px;
+        padding: 3px 7px;
+        margin: 0;
+        border: 1px solid transparent;
+        border-radius: 6px;
+        color: #DCEAF0 !important;
+        transition: background-color .12s ease, color .12s ease;
+    }
+    [data-testid="stSidebar"] [data-testid="stRadio"] [role="radiogroup"] > label[data-baseweb="radio"] p {
+        color: #DCEAF0 !important;
+        font-size: .81rem;
+        font-weight: 640;
+        line-height: 1.15;
+        white-space: nowrap;
+    }
+    [data-testid="stSidebar"] [data-testid="stRadio"] [role="radiogroup"] > label[data-baseweb="radio"] p::first-letter {
+        color: #19D5E8 !important;
+    }
+    [data-testid="stSidebar"] [data-testid="stRadio"] [role="radiogroup"] > label[data-baseweb="radio"]:hover {
+        background: #0B3440;
+        color: #FFFFFF !important;
+    }
+    [data-testid="stSidebar"] [data-testid="stRadio"] [role="radiogroup"] > label[data-baseweb="radio"]:has(input[type="radio"]:checked) {
+        background: #087F83;
+        border: 1px solid #19D5E8;
+        color: #FFFFFF !important;
+        box-shadow: inset 3px 0 #19D5E8;
+    }
+    [data-testid="stSidebar"] [data-testid="stRadio"] [role="radiogroup"] > label[data-baseweb="radio"]:has(input[type="radio"]:checked) p {
+        color: #FFFFFF !important;
+        font-weight: 750;
+    }
+    [data-testid="stSidebar"] [data-testid="stRadio"] input[type="radio"] {
+        accent-color: #19D5E8;
+    }
+    [data-testid="stSidebar"] [data-testid="stRadio"] label[data-baseweb="radio"] > div:first-child {
+        background: transparent !important;
+        border: 1px solid #19D5E8 !important;
+    }
+    [data-testid="stSidebar"] [data-testid="stRadio"] label[data-baseweb="radio"] > div:first-child > div {
+        background: #071D25 !important;
+    }
+    [data-testid="stSidebar"] [data-testid="stRadio"] label[data-baseweb="radio"]:has(input[type="radio"]:checked) > div:first-child {
+        background: #19D5E8 !important;
+        border-color: #19D5E8 !important;
+    }
+    [data-testid="stSidebar"] [data-testid="stRadio"] label[data-baseweb="radio"]:has(input[type="radio"]:checked) > div:first-child > div {
+        background: #19D5E8 !important;
+    }
+    [data-testid="stSidebar"] [data-testid="stCaptionContainer"] {
+        color: #AFC5D0 !important;
+        font-size: .72rem;
+    }
+    [data-testid="stSidebar"] [data-testid="stCaptionContainer"] p {
+        color: #AFC5D0 !important;
+    }
+    .st-key-overview-top-grid [data-testid="stHorizontalBlock"],
+    .st-key-overview-bottom-grid [data-testid="stHorizontalBlock"] {
+        align-items: stretch;
+    }
+    .st-key-overview-top-grid { margin-top: .35rem; }
+    .st-key-overview-bottom-grid { margin-top: .25rem; }
+    .st-key-overview-top-grid [data-testid="stVerticalBlockBorderWrapper"],
+    .st-key-overview-bottom-grid [data-testid="stVerticalBlockBorderWrapper"] {
+        height: 100%;
+        box-sizing: border-box;
+    }
+    [data-testid="stVerticalBlockBorderWrapper"] {
+        background: #092832;
+        border-color: #174650;
+        border-radius: 10px;
+    }
+    [data-testid="stVerticalBlock"] > [data-testid="stElementContainer"] { min-width: 0; }
+    .stButton > button, .stDownloadButton > button {
+        border: 1px solid #1A6673;
+        border-radius: 7px;
+        font-weight: 650;
+        background: #0B3440;
+        color: #EAF7FA;
+    }
+    .stButton > button:hover, .stDownloadButton > button:hover {
+        border-color: #19D5E8;
+        color: #fff;
+        background: #0C4652;
+    }
+    [data-testid="stDataFrame"], [data-testid="stTable"] {
+        border: 1px solid #174650;
+        border-radius: 9px;
+        overflow: hidden;
+    }
+    [data-testid="stExpander"] {
+        border: 1px solid #174650;
+        border-radius: 9px;
+        background: #092832;
+    }
+    [data-testid="stFileUploader"] section {
+        border: 1px dashed #1A6673;
+        border-radius: 9px;
+        background: #092832;
+    }
+    [data-testid="stTextInput"] input, [data-testid="stNumberInput"] input,
+    [data-testid="stSelectbox"] [data-baseweb="select"] > div,
+    [data-testid="stTextArea"] textarea {
+        background: #071D25;
+        border-color: #1A505B;
+        color: #EAF7FA;
+    }
+    [data-testid="stSelectbox"] [data-baseweb="select"] *,
+    [data-testid="stMultiSelect"] [data-baseweb="select"] *,
+    [data-testid="stCheckbox"] label,
+    [data-testid="stDataFrame"] *,
+    [data-testid="stTable"] * {
+        color: #EAF7FA;
+    }
+    [data-testid="stMarkdownContainer"] h1,
+    [data-testid="stMarkdownContainer"] h2,
+    [data-testid="stMarkdownContainer"] h3,
+    [data-testid="stMarkdownContainer"] h4,
+    [data-testid="stSubheader"] {
+        color: #FFFFFF;
+    }
+    hr { border-color: #174650; }
+    .arch-diagram { color: #EAF7FA; }
+    .arch-panel {
+        background: #092832;
+        border: 1px solid #174650;
+        border-radius: 12px;
+        padding: 17px;
+        margin: 12px 0;
+    }
+    .arch-panel-title { color: #19D5E8; font-size: .74rem; font-weight: 800; letter-spacing: .1em; margin: 0 0 12px; }
+    .arch-flow { display:grid; grid-template-columns:minmax(0,1fr); justify-items:stretch; max-width:900px; margin:0 auto; }
+    .arch-node {
+        min-width:0;
+        background:#0B3440;
+        border:1px solid #1A505B;
+        border-left:4px solid #19D5E8;
+        border-radius:8px;
+        padding:11px 14px;
+        overflow-wrap:anywhere;
+    }
+    .arch-node.safety { background:#241F16; border-color:#8A642E; border-left-color:#F2BD63; }
+    .arch-node.output { border-left-color:#00AFA3; }
+    .arch-step { display:block; color:#91B2BC; font-size:.65rem; font-weight:800; letter-spacing:.1em; margin-bottom:3px; }
+    .arch-node strong { display:block; color:#EAF7FA; font-size:.91rem; }
+    .arch-node span:last-child { display:block; color:#B7D0D6; font-size:.79rem; line-height:1.4; margin-top:3px; }
+    .arch-arrow { color:#19D5E8; font-size:1.2rem; font-weight:800; line-height:1; text-align:center; padding:5px 0; }
+    .arch-branch-label { color:#91B2BC; font-size:.8rem; line-height:1.45; margin:0 0 12px; }
+    .arch-analytics, .arch-endpoints { display:grid; grid-template-columns:repeat(2,minmax(0,1fr)); gap:10px; }
+    .arch-analytics .arch-node { border-left-color:#00AFA3; height:100%; box-sizing:border-box; }
+    [data-testid="stPlotlyChart"] { min-width: 0; }
+    [data-testid="stPlotlyChart"] .xtick text,
+    [data-testid="stPlotlyChart"] .ytick text,
+    [data-testid="stPlotlyChart"] .legend text {
+        fill: #D7E5EA !important;
+        font-size: 12px !important;
+    }
+    .st-key-presentation-layout [data-testid="stCheckbox"] {
+        padding: 3px 7px;
+    }
+    @media (max-width: 900px) {
+        .hero-chip-art { flex-basis: 120px; width: 120px; }
+        .kpi-card { padding: 12px; }
+        .kpi-value { font-size: 1.08rem; }
+    }
+    @media (max-width: 640px) {
+        .block-container { padding: .75rem .7rem 1.5rem; }
+        .hero { min-height: 0; padding: 14px; }
+        .hero-chip-art { display: none; }
+        .kpi-card { min-height: 70px; padding: 8px; gap: 7px; }
+        .kpi-icon { flex-basis: 32px; width: 32px; height: 32px; }
+        .kpi-value { font-size: .92rem; }
+        .kpi-label { font-size: .68rem; }
+        .arch-panel { padding: 13px; }
+        .arch-analytics, .arch-endpoints { grid-template-columns:minmax(0,1fr); }
+        .arch-node { padding: 10px 12px; }
+    }
     </style>
     """,
     unsafe_allow_html=True,
@@ -212,13 +442,33 @@ def compare_reference_models() -> pd.DataFrame:
 def chart_layout(fig: go.Figure, height: int = 360) -> go.Figure:
     fig.update_layout(
         height=height,
+        autosize=True,
         paper_bgcolor="rgba(0,0,0,0)",
         plot_bgcolor="rgba(0,0,0,0)",
-        font={"color": "#c8d6e8", "family": "Segoe UI"},
-        margin={"l": 12, "r": 18, "t": 38, "b": 12},
-        legend={"bgcolor": "rgba(0,0,0,0)"},
-        xaxis={"gridcolor": "#1c3049", "zerolinecolor": "#34506d"},
-        yaxis={"gridcolor": "#1c3049", "zerolinecolor": "#34506d"},
+        font={"color": "#D7E5EA", "family": "Segoe UI", "size": 13},
+        margin={"l": 10, "r": 10, "t": 30, "b": 32},
+        legend={
+            "bgcolor": "rgba(0,0,0,0)",
+            "font": {"size": 12},
+            "orientation": "h",
+            "y": 1.12,
+            "x": 0.5,
+            "xanchor": "center",
+        },
+        xaxis={
+            "gridcolor": "#174650",
+            "zerolinecolor": "#28616B",
+            "tickfont": {"size": 12},
+            "title_font": {"size": 13},
+            "automargin": True,
+        },
+        yaxis={
+            "gridcolor": "#174650",
+            "zerolinecolor": "#28616B",
+            "tickfont": {"size": 12},
+            "title_font": {"size": 13},
+            "automargin": True,
+        },
     )
     return fig
 
@@ -233,6 +483,28 @@ def format_metric(value: Any, suffix: str = "") -> str:
     if value is None or pd.isna(value):
         return "—"
     return f"{float(value):,.4f}{suffix}"
+
+
+def render_kpi_card(
+    column: Any,
+    label: str,
+    value: str,
+    detail: str,
+    icon_svg: str,
+) -> None:
+    column.markdown(
+        f"""
+        <div class="kpi-card">
+          <div class="kpi-icon">{icon_svg}</div>
+          <div>
+            <div class="kpi-label">{label}</div>
+            <div class="kpi-value">{value}</div>
+            <div class="kpi-detail">{detail}</div>
+          </div>
+        </div>
+        """,
+        unsafe_allow_html=True,
+    )
 
 
 def filter_prediction_table(frame: pd.DataFrame, key: str) -> pd.DataFrame:
@@ -288,25 +560,115 @@ if "prediction_history" not in st.session_state:
 st.markdown(
     """
     <div class="hero">
-      <div class="eyebrow">INTELLIGENT PLL TESTING · PREDICTION · ENGINEERING ANALYTICS</div>
-      <h1 style="margin:.4rem 0 .35rem 0;">PLL-Smart 2.1</h1>
-      <p>Engineering analytics for adaptive PLL testing — with explicit full-test fallback.</p>
+      <div class="hero-copy">
+        <div class="eyebrow">SEMICONDUCTOR TEST INTELLIGENCE / ENGINEERING WORKBENCH</div>
+        <h1>PLL-Smart 2.1</h1>
+        <p>PLL RMS Jitter Analysis &amp; Engineering Dashboard</p>
+      </div>
+      <svg class="hero-chip-art" viewBox="0 0 190 118" role="img" aria-label="Semiconductor wafer and chip illustration">
+        <g fill="none" stroke="#19D5E8" stroke-width="1">
+          <circle cx="78" cy="59" r="48" opacity=".42"/>
+          <circle cx="78" cy="59" r="38" opacity=".25"/>
+          <path d="M30 59h96M78 11v96M44 25l68 68M112 25 44 93" opacity=".22"/>
+          <circle cx="78" cy="59" r="27" stroke-dasharray="2 5" opacity=".72"/>
+          <rect x="126" y="34" width="42" height="42" rx="4" fill="#092832" opacity=".96"/>
+          <rect x="135" y="43" width="24" height="24" rx="2" opacity=".86"/>
+          <path d="M133 27v7m9-7v7m9-7v7m9-7v7m-27 42v7m9-7v7m9-7v7m9-7v7m-43-42h7m-7 9h7m-7 9h7m-7 9h7m42-27h7m-7 9h7m-7 9h7m-7 9h7" opacity=".8"/>
+          <path d="M104 59h18m-44-35v8m-24 27h9m23 24v8" stroke="#00AFA3" opacity=".9"/>
+        </g>
+        <circle cx="53" cy="41" r="2" fill="#19D5E8" opacity=".75"/>
+        <circle cx="93" cy="74" r="2" fill="#00AFA3" opacity=".9"/>
+      </svg>
     </div>
     """,
     unsafe_allow_html=True,
 )
-st.markdown(
-    '<div class="warning-box"><strong>Research prototype — synthetic data only.</strong> '
-    "No production qualification or DPPM guarantee. The current illustrative held-out rule "
-    "included <strong>52 measured failing dies among 96,121 candidates</strong>; "
-    "<strong>keep the full jitter test enabled.</strong></div>",
-    unsafe_allow_html=True,
+feature_icon = (
+    '<svg viewBox="0 0 24 24" fill="none" stroke-width="1.6" '
+    'stroke-linecap="round" stroke-linejoin="round"><path d="M4 5h16v14H4z"/>'
+    '<path d="M8 9h8M8 13h8M8 17h4"/></svg>'
 )
-
+kpi_columns = st.columns(4, gap="small")
+render_kpi_card(
+    kpi_columns[0],
+    "Jitter Dataset",
+    f"{sum(REFERENCE_DIAGNOSTICS['raw_partition_counts'].values()):,}",
+    "records",
+    feature_icon,
+)
+render_kpi_card(
+    kpi_columns[1],
+    "Lock-Time Dataset",
+    f"{LOCK_METRICS['raw_rows']:,}",
+    "records",
+    '<svg viewBox="0 0 24 24" fill="none" stroke-width="1.6" '
+    'stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="12" r="8"/>'
+    '<path d="M12 7v5l3 2"/></svg>',
+)
+render_kpi_card(
+    kpi_columns[2],
+    "Input Features",
+    str(len(FEATURE_COLUMNS)),
+    "approved model inputs",
+    '<svg viewBox="0 0 24 24" fill="none" stroke-width="1.6" '
+    'stroke-linecap="round" stroke-linejoin="round"><path d="M4 5h6v6H4zM14 5h6v6h-6zM4 15h6v5H4zM14 15h6v5h-6z"/></svg>',
+)
+render_kpi_card(
+    kpi_columns[3],
+    "Target",
+    "RMS Jitter",
+    "picoseconds (ps)",
+    '<svg viewBox="0 0 24 24" fill="none" stroke-width="1.6" '
+    'stroke-linecap="round" stroke-linejoin="round"><path d="M3 13h4l3-7 4 12 3-7h4"/></svg>',
+)
 with st.sidebar:
-    st.markdown("## ◈ PLL-Smart")
-    st.caption("Engineering analytics platform · v2.1")
+    st.markdown(
+        '<div class="sidebar-brand"><span class="sidebar-brand-mark">'
+        '<svg viewBox="0 0 24 24" width="21" height="21" fill="none" '
+        'stroke="currentColor" stroke-width="1.5" stroke-linecap="round">'
+        '<rect x="6" y="6" width="12" height="12" rx="2"/>'
+        '<path d="M9 2v4m6-4v4M9 18v4m6-4v4M2 9h4m-4 6h4m12-6h4m-4 6h4"/>'
+        '</svg></span> PLL-Smart 2.1</div><div class="sidebar-subtitle">'
+        'PLL Test Analytics</div>',
+        unsafe_allow_html=True,
+    )
+    presentation_mode = st.checkbox(
+        "Presentation layout",
+        help="Hide secondary status details and use the full available dashboard width.",
+        key="presentation-layout",
+    )
+    st.markdown(
+        '<div class="status-card"><div class="eyebrow">SYSTEM STATUS</div>'
+        '<div style="font-size:1.02rem;font-weight:750;color:#eaf7ff;margin-top:5px;">'
+        '● &nbsp; MODEL ONLINE</div><div class="small-note">Research mode · synthetic data</div></div>',
+        unsafe_allow_html=True,
+    )
+    navigation_items = [
+        ("◈", "Executive Overview"),
+        ("▤", "Dataset Explorer"),
+        ("⌖", "Manual Prediction"),
+        ("▦", "Batch Prediction"),
+        ("◉", "Actual vs Predicted"),
+        ("◷", "Adaptive Lock-Time"),
+        ("∿", "Model Performance"),
+        ("⇄", "Data Drift Monitoring"),
+        ("◴", "Prediction History"),
+        ("⊞", "Reports & Recommendations"),
+        ("✳", "Explainable AI"),
+        ("⌘", "Engineering What-if"),
+        ("▣", "Dataset Management"),
+    ]
+    navigation_icons = {label: icon for icon, label in navigation_items}
+    st.caption("ENGINEERING WORKSPACES")
+    selected_section = st.radio(
+        "Engineering workspaces",
+        [label for _, label in navigation_items],
+        format_func=lambda label: f"{navigation_icons[label]}  {label}",
+        label_visibility="collapsed",
+        key="selected_workspace",
+    )
     st.markdown("---")
+    st.caption("DATASET INPUT")
     uploaded_file = st.file_uploader(
         "Upload a jitter-measurement CSV",
         type=["csv"],
@@ -326,6 +688,22 @@ with st.sidebar:
     st.caption("Saved model is loaded once per Streamlit process. Uploads do not retrain.")
     st.markdown("---")
     st.caption("Illustrative only: USL 2.2 ps · screen < 2.0 · lock +3 µs / 60 µs cap")
+
+if presentation_mode:
+    st.markdown(
+        """
+        <style>
+        .block-container { max-width: none; padding: .6rem 1.15rem .8rem; }
+        [data-testid="stSidebar"] .status-card { display: none; }
+        [data-testid="stSidebar"] [data-testid="stCaptionContainer"] {
+            font-size: .69rem;
+        }
+        .hero { min-height: 92px; }
+        .kpi-card { min-height: 70px; }
+        </style>
+        """,
+        unsafe_allow_html=True,
+    )
 
 batch_frame: pd.DataFrame | None = None
 batch_summary: dict[str, Any] | None = None
@@ -403,311 +781,162 @@ if uploaded_frame is not None:
         upload_drift = analysis["upload_drift"]
         upload_drift_summary = analysis["upload_drift_summary"]
 
-tabs = st.tabs(
-    [
-        "Executive Overview",
-        "Dataset Explorer",
-        "Batch Prediction",
-        "Manual Prediction",
-        "Actual vs Predicted",
-        "Adaptive Lock-Time",
-        "Model Performance",
-        "Data Drift Monitoring",
-        "Prediction History",
-        "Reports & Recommendations",
-        "Explainable AI",
-        "Engineering What-if",
-        "Dataset Management",
-    ]
-)
-
 # 1. Executive Overview
-with tabs[0]:
-    st.subheader("Executive Overview")
-    st.markdown(
-        "PLL-Smart is an engineering analytics prototype for exploring how early "
-        "parametric measurements can inform PLL RMS-jitter analysis and how measured "
-        "lock time can inform adaptive waiting. Results below are based on the supplied "
-        "**synthetic datasets** and are intended for research and presentation—not "
-        "production test control."
-    )
-    st.error(
-        "**SAFETY INHIBIT — The system ALWAYS recommends RUN FULL JITTER TEST.** "
-        "It never authorizes skipping or removing the full jitter test."
-    )
-
-    st.markdown("#### Synthetic evaluation at a glance")
-    show_metrics(
-        [
-            ("Usable held-out test dies", f"{MODEL_METRICS['test_rows']:,}", "synthetic test split"),
-            ("Jitter MAE", f"{MODEL_METRICS['test_mae_ps']:.4f} ps", "lower is better"),
-            ("Jitter RMSE", f"{MODEL_METRICS['test_rmse_ps']:.4f} ps", "held-out test"),
-            ("Jitter R²", f"{MODEL_METRICS['test_r2']:.4f}", "held-out test"),
-        ]
-    )
-    show_metrics(
-        [
-            (
-                "Calibration guard band",
-                f"{MODEL_METRICS['guard_band_ps']:.4f} ps",
-                f"illustrative α = {MODEL_METRICS['conformal_alpha_illustrative']:.0%}",
-            ),
-            ("Unsafe skip candidates", f"{MODEL_METRICS['test_skip_candidate_count']:,}", "illustrative rule"),
-            (
-                "Measured failures among candidates",
-                str(MODEL_METRICS["test_failures_among_skip_candidates"]),
-                "full-test inhibit retained",
-            ),
-            (
-                "Mean lock-wait comparison",
-                (
-                    f"{LOCK_METRICS['mean_fixed_wait_us']:.1f} → "
-                    f"{LOCK_METRICS['mean_adaptive_wait_us']:.2f} µs"
-                ),
-                f"{LOCK_METRICS['savings_percent']:.2f}% illustrative reduction",
-            ),
-        ]
-    )
-    st.caption(
-        "Saved evaluation values from the supplied synthetic data. Illustrative "
-        "thresholds and retrospective results are not production specifications or qualification."
-    )
-
-    st.markdown("#### Machine-learning workflow")
-    workflow = (
-        "Dataset",
-        "Data Validation",
-        "Feature Processing",
-        "Jitter Prediction",
-        "Calibration",
-        "Engineering Recommendation",
-    )
-    workflow_columns = st.columns(len(workflow))
-    for index, (column, stage) in enumerate(zip(workflow_columns, workflow), start=1):
-        with column:
+if selected_section == "Executive Overview":
+    with st.container(key="overview-top-grid"):
+        performance_column, comparison_column = st.columns([1, 1], gap="small")
+        with performance_column:
             with st.container(border=True):
-                st.caption(f"STEP {index:02d}")
-                st.markdown(f"**{stage}**")
-    st.markdown(
-        "<div style='text-align:center;color:#38d9f5;font-weight:600;"
-        "padding:0 0 0.6rem 0;'>"
-        "Dataset → Data Validation → Feature Processing → Jitter Prediction "
-        "→ Calibration → Engineering Recommendation"
-        "</div>",
-        unsafe_allow_html=True,
-    )
-
-    st.markdown("#### System architecture")
-    st.markdown(
-        """
-        <section class="arch-diagram" aria-label="PLL-Smart system architecture">
-          <div class="arch-panel">
-            <div class="arch-panel-title">DATA FLOW · JITTER PREDICTION · SAFETY CONTROL</div>
-            <div class="arch-flow">
-              <div class="arch-node">
-                <span class="arch-step">01 · INPUT DATA</span>
-                <strong>Synthetic PLL datasets</strong>
-                <span>Jitter measurements and lock-time CSVs</span>
-              </div>
-              <div class="arch-arrow" aria-hidden="true">↓</div>
-              <div class="arch-node">
-                <span class="arch-step">02 · DATA VALIDATION</span>
-                <strong>Load and validate</strong>
-                <span>Cached reads, schema checks, numeric validation and training-range checks</span>
-              </div>
-              <div class="arch-arrow" aria-hidden="true">↓</div>
-              <div class="arch-node">
-                <span class="arch-step">03 · APPROVED INPUTS</span>
-                <strong>Feature processing</strong>
-                <span>Exactly seven pre-test model features; actual jitter and ground-truth labels are excluded</span>
-              </div>
-              <div class="arch-arrow" aria-hidden="true">↓</div>
-              <div class="arch-node">
-                <span class="arch-step">04 · TRAINED ARTIFACT</span>
-                <strong>Saved HistGradientBoostingRegressor</strong>
-                <span>Loaded for inference; dashboard uploads do not retrain it</span>
-              </div>
-              <div class="arch-arrow" aria-hidden="true">↓</div>
-              <div class="arch-node">
-                <span class="arch-step">05 · MODEL OUTPUT</span>
-                <strong>Jitter prediction</strong>
-                <span>Predicted RMS jitter in picoseconds</span>
-              </div>
-              <div class="arch-arrow" aria-hidden="true">↓</div>
-              <div class="arch-node">
-                <span class="arch-step">06 · UNCERTAINTY</span>
-                <strong>Calibration guard band</strong>
-                <span>Stored calibration residual guard band and upper prediction bound</span>
-              </div>
-              <div class="arch-arrow" aria-hidden="true">↓</div>
-              <div class="arch-node safety">
-                <span class="arch-step">07 · CENTRAL SAFETY LAYER</span>
-                <strong>ALWAYS RUN FULL JITTER TEST</strong>
-                <span>No skip authorization; missing, invalid or out-of-range inputs fail safe</span>
-              </div>
-            </div>
-          </div>
-
-          <div class="arch-panel">
-            <div class="arch-panel-title">SUPPORTING ENGINEERING ANALYTICS · SOFTWARE ONLY</div>
-            <p class="arch-branch-label">
-              Read-only analysis uses the supplied datasets, validated uploads and saved-model
-              outputs. These modules do not control PLL or ATE hardware.
-            </p>
-            <div class="arch-analytics">
-              <div class="arch-node">
-                <span class="arch-step">LOCK-TIME DATA</span>
-                <strong>Adaptive lock-time comparison</strong>
-                <span>Fixed-wait versus calculated adaptive-wait analysis</span>
-              </div>
-              <div class="arch-node">
-                <span class="arch-step">UPLOAD VS TRAINING</span>
-                <strong>Data drift monitoring</strong>
-                <span>Feature distribution, validation and range indicators</span>
-              </div>
-              <div class="arch-node">
-                <span class="arch-step">SAVED MODEL</span>
-                <strong>Explainable AI</strong>
-                <span>Model-dependent global importance and per-die analysis</span>
-              </div>
-              <div class="arch-node">
-                <span class="arch-step">SAVED MODEL</span>
-                <strong>Engineering what-if</strong>
-                <span>Compare controlled input scenarios without changing artifacts</span>
-              </div>
-            </div>
-            <div class="arch-arrow" aria-hidden="true">↓</div>
-            <div class="arch-endpoints">
-              <div class="arch-node output">
-                <span class="arch-step">PRESENTATION</span>
-                <strong>Reporting and visualization</strong>
-                <span>Dashboard charts, tables, and JSON, PDF and CSV exports</span>
-              </div>
-              <div class="arch-node safety">
-                <span class="arch-step">SAFETY STATUS INCLUDED</span>
-                <strong>RUN FULL JITTER TEST</strong>
-                <span>Safety warnings remain visible in engineering outputs</span>
-              </div>
-            </div>
-          </div>
-        </section>
-        """,
-        unsafe_allow_html=True,
-    )
-    st.caption(
-        "Approved model inputs: vco_band_code, ring_osc_ghz, chargepump_ua, "
-        "lock_time_us, vdd_droop_norm, wafer_radius_norm, and leak_screen_norm. "
-        "Actual jitter and synthetic labels are excluded from inference. This is a "
-        "synthetic-data research prototype for offline analysis; it does not connect "
-        "to or control PLL/ATE hardware and is not production-qualified."
-    )
-
-    st.markdown("#### Held-out results")
-    chart_left, chart_right = st.columns([1.35, 1])
-    with chart_left:
-        prediction_sample = ORIGINAL_TEST_PREDICTIONS.sample(
-            n=min(2500, len(ORIGINAL_TEST_PREDICTIONS)),
-            random_state=42,
-        )
-        scatter = go.Figure()
-        scatter.add_trace(
-            go.Scatter(
-                x=prediction_sample["actual_jitter_ps"],
-                y=prediction_sample["predicted_jitter_ps"],
-                mode="markers",
-                name="Synthetic test dies",
-                marker={"color": CYAN, "size": 5, "opacity": 0.48},
-                hovertemplate=(
-                    "Measured: %{x:.3f} ps<br>Predicted: %{y:.3f} ps"
-                    "<extra></extra>"
-                ),
-            )
-        )
-        range_min = float(
-            min(
-                prediction_sample["actual_jitter_ps"].min(),
-                prediction_sample["predicted_jitter_ps"].min(),
-            )
-        )
-        range_max = float(
-            max(
-                prediction_sample["actual_jitter_ps"].max(),
-                prediction_sample["predicted_jitter_ps"].max(),
-            )
-        )
-        scatter.add_trace(
-            go.Scatter(
-                x=[range_min, range_max],
-                y=[range_min, range_max],
-                mode="lines",
-                name="Ideal agreement",
-                line={"color": MUTED, "dash": "dash", "width": 1},
-                hoverinfo="skip",
-            )
-        )
-        scatter.update_layout(
-            title="Measured vs predicted RMS jitter · deterministic sample",
-            xaxis_title="Measured RMS jitter (ps)",
-            yaxis_title="Predicted RMS jitter (ps)",
-            showlegend=False,
-        )
-        st.plotly_chart(chart_layout(scatter, 330), width="stretch")
-    with chart_right:
-        wait_comparison = go.Figure(
-            data=[
-                go.Bar(
-                    x=[
-                        LOCK_METRICS["mean_fixed_wait_us"],
-                        LOCK_METRICS["mean_adaptive_wait_us"],
-                    ],
-                    y=["Fixed wait", "Adaptive wait"],
-                    orientation="h",
-                    marker={"color": [BLUE, CYAN]},
-                    text=[
-                        f"{LOCK_METRICS['mean_fixed_wait_us']:.2f} µs",
-                        f"{LOCK_METRICS['mean_adaptive_wait_us']:.2f} µs",
-                    ],
-                    textposition="outside",
-                    hovertemplate="%{y}: %{x:.2f} µs<extra></extra>",
+                st.markdown("#### Model Performance")
+                st.caption(
+                    f"Saved model · {MODEL_METRICS['test_rows']:,} held-out records"
                 )
-            ]
-        )
-        wait_comparison.update_layout(
-            title="Mean lock-time wait · synthetic dataset",
-            xaxis_title="Wait time (µs)",
-            yaxis_title="",
-            showlegend=False,
-            xaxis={"rangemode": "tozero"},
-        )
-        st.plotly_chart(chart_layout(wait_comparison, 330), width="stretch")
+                metric_columns = st.columns(3, gap="small")
+                metric_columns[0].metric("MAE", f"{MODEL_METRICS['test_mae_ps']:.4f} ps")
+                metric_columns[1].metric("RMSE", f"{MODEL_METRICS['test_rmse_ps']:.4f} ps")
+                metric_columns[2].metric("R²", f"{MODEL_METRICS['test_r2']:.4f}")
+                st.caption("Synthetic holdout only · not production-qualified")
+        with comparison_column:
+            with st.container(border=True):
+                st.markdown("#### Model Comparison")
+                comparison_results = compare_reference_models()
+                error_metrics = comparison_results.melt(
+                    id_vars="Model",
+                    value_vars=["MAE (ps)", "RMSE (ps)"],
+                    var_name="Metric",
+                    value_name="Error (ps)",
+                )
+                comparison_fig = px.bar(
+                    error_metrics,
+                    x="Model",
+                    y="Error (ps)",
+                    color="Metric",
+                    barmode="group",
+                    color_discrete_sequence=[CYAN, BLUE],
+                    labels={"Model": "", "Error (ps)": "Error (ps)"},
+                )
+                comparison_fig.update_xaxes(tickangle=-16, tickfont={"size": 11})
+                st.plotly_chart(                                                chart_layout(comparison_fig, 150), width="stretch")
+                comparison_columns = [
+                    column
+                    for column in ("Model", "MAE (ps)", "RMSE (ps)", "R²")
+                    if column in comparison_results.columns
+                ]
+                st.dataframe(
+                    comparison_results.loc[:, comparison_columns].style.format(
+                        {
+                            column: "{:.4f}"
+                            for column in comparison_columns
+                            if column != "Model"
+                        }
+                    ),
+                    width="stretch",
+                    hide_index=True,
+                    height=100,
+                )
 
-    st.markdown("#### Engineering significance")
-    significance_left, significance_right = st.columns(2)
-    with significance_left:
-        st.markdown(
-            "- **Prediction error:** MAE and RMSE summarize the saved model's "
-            "jitter error on the untouched synthetic test partition.\n"
-            "- **Calibration:** the guard band is added to predictions as an "
-            "illustrative upper bound; it is not a production uncertainty guarantee.\n"
-            "- **Test efficiency study:** adaptive waiting compares dataset means "
-            "under the documented margin-and-cap formula."
+    with st.container(key="overview-bottom-grid"):
+        actual_column, insights_column = st.columns([1, 1], gap="small")
+        with actual_column:
+            with st.container(border=True):
+                st.markdown("#### Actual vs Predicted RMS Jitter")
+                prediction_sample = ORIGINAL_TEST_PREDICTIONS.sample(
+                    n=min(2500, len(ORIGINAL_TEST_PREDICTIONS)),
+                    random_state=42,
+                )
+                actual_predicted_fig = go.Figure()
+                actual_predicted_fig.add_trace(
+                    go.Scatter(
+                        x=prediction_sample["actual_jitter_ps"],
+                        y=prediction_sample["predicted_jitter_ps"],
+                        mode="markers",
+                        name="Synthetic test dies",
+                        marker={"color": CYAN, "size": 5, "opacity": 0.48},
+                        hovertemplate=(
+                            "Measured: %{x:.3f} ps<br>Predicted: %{y:.3f} ps"
+                            "<extra></extra>"
+                        ),
+                    )
+                )
+                range_min = float(
+                    min(
+                        prediction_sample["actual_jitter_ps"].min(),
+                        prediction_sample["predicted_jitter_ps"].min(),
+                    )
+                )
+                range_max = float(
+                    max(
+                        prediction_sample["actual_jitter_ps"].max(),
+                        prediction_sample["predicted_jitter_ps"].max(),
+                    )
+                )
+                actual_predicted_fig.add_trace(
+                    go.Scatter(
+                        x=[range_min, range_max],
+                        y=[range_min, range_max],
+                        mode="lines",
+                        name="Ideal agreement",
+                        line={"color": MUTED, "dash": "dash", "width": 1},
+                        hoverinfo="skip",
+                    )
+                )
+                actual_predicted_fig.update_layout(
+                    xaxis_title="Measured RMS jitter (ps)",
+                    yaxis_title="Predicted RMS jitter (ps)",
+                    showlegend=False,
+                )
+                st.plotly_chart(
+                    chart_layout(actual_predicted_fig, 210), width="stretch"
+                )
+        with insights_column:
+            with st.container(border=True):
+                st.markdown("#### Engineering Insights")
+                st.markdown(
+                    f"- **Held-out fit:** MAE {MODEL_METRICS['test_mae_ps']:.4f} ps · "
+                    f"RMSE {MODEL_METRICS['test_rmse_ps']:.4f} ps · "
+                    f"R² {MODEL_METRICS['test_r2']:.4f} "
+                    f"({MODEL_METRICS['test_rows']:,} synthetic records)."
+                    f"\n- **Adaptive wait:** {LOCK_METRICS['mean_adaptive_wait_us']:.2f} µs "
+                    f"vs {LOCK_METRICS['mean_fixed_wait_us']:.2f} µs fixed "
+                    f"({LOCK_METRICS['savings_percent']:.2f}% illustrative reduction)."
+                )
+                st.markdown(
+                    '<div class="warning-box"><strong>RUN FULL JITTER TEST</strong><br>'
+                    'Global safety inhibit remains active. The illustrative held-out rule '
+                    'included <strong>52 measured failing dies among 96,121 candidates</strong>. '
+                    'Never skip the full test.</div>',
+                    unsafe_allow_html=True,
+                )
+                st.caption(
+                    "Synthetic-data research only; results do not establish production "
+                    "qualification or a DPPM guarantee."
+                )
+
+    with st.expander("Workflow and system architecture"):
+        workflow = (
+            "Dataset",
+            "Validation",
+            "Seven approved features",
+            "Saved-model prediction",
+            "Calibration bound",
+            "Full-test recommendation",
         )
-    with significance_right:
-        st.markdown(
-            "- **Safety evidence:** 52 measured failing dies were present among "
-            "96,121 illustrative skip candidates.\n"
-            "- **Decision:** that finding is why every recommendation remains "
-            "**RUN FULL JITTER TEST**.\n"
-            "- **Interpretation:** these synthetic results motivate further "
-            "validation; they do not demonstrate production qualification or DPPM."
+        for row_start in (0, 3):
+            workflow_columns = st.columns(3, gap="small")
+            for index, (column, stage) in enumerate(
+                zip(workflow_columns, workflow[row_start : row_start + 3]),
+                start=row_start + 1,
+            ):
+                with column:
+                    st.markdown(f"**{index:02d} · {stage}**")
+        st.caption(
+            "Uploads are validated and analyzed in memory. The saved model, source datasets, "
+            "calibration, and report-generation logic are not changed by dashboard use. "
+            "The app does not connect to PLL/ATE hardware and is not production-qualified."
         )
-    if uploaded_frame is not None:
-        st.success(f"Active upload: {uploaded_name} · {len(uploaded_frame):,} rows")
-    elif upload_error is None:
-        st.caption("Upload a CSV in the sidebar to explore and score a new dataset.")
 
 # 2. Dataset Explorer
-with tabs[1]:
+if selected_section == "Dataset Explorer":
     st.subheader("Dataset Explorer")
     explorer_options = [
         "Original: Train partition",
@@ -822,7 +1051,7 @@ with tabs[1]:
         )
 
 # 3. Batch Prediction
-with tabs[2]:
+if selected_section == "Batch Prediction":
     st.subheader("Batch AI Prediction")
     if uploaded_frame is None:
         st.info("Upload a jitter CSV in the sidebar to run batch predictions.")
@@ -906,7 +1135,7 @@ with tabs[2]:
                 )
 
 # 4. Manual Prediction
-with tabs[3]:
+if selected_section == "Manual Prediction":
     st.subheader("Manual Single-Die Prediction")
     st.caption(
         "All seven required feature values must be valid; the screen value is a normalized "
@@ -1002,7 +1231,7 @@ with tabs[3]:
             )
 
 # 5. Actual vs Predicted
-with tabs[4]:
+if selected_section == "Actual vs Predicted":
     st.subheader("Actual vs Predicted Analysis")
     if uploaded_frame is None:
         st.info("Upload a dataset containing `rms_jitter_ps` to compare actual and predicted values.")
@@ -1082,7 +1311,7 @@ with tabs[4]:
             st.caption("These metrics are separate from the original held-out test results.")
 
 # 6. Adaptive Lock-Time
-with tabs[5]:
+if selected_section == "Adaptive Lock-Time":
     st.subheader("Adaptive Lock-Time Optimization")
     st.caption(
         "Illustrative parameters only: 3.0 µs verification margin and 60.0 µs fixed-wait cap."
@@ -1198,7 +1427,7 @@ with tabs[5]:
     st.caption("Calculated as min(lock_time_us + margin, fixed-wait cap); not production-qualified.")
 
 # 7. Model Performance
-with tabs[6]:
+if selected_section == "Model Performance":
     st.subheader("Model Performance & Comparison")
     st.caption(
         "Synthetic/illustrative evaluation on the original held-out test partition. "
@@ -1388,7 +1617,7 @@ with tabs[6]:
     )
 
 # 8. Data Drift Monitoring
-with tabs[7]:
+if selected_section == "Data Drift Monitoring":
     st.subheader("Data Drift Monitoring")
     st.caption(
         "Compares uploaded numeric features with the original training partition. "
@@ -1594,7 +1823,7 @@ with tabs[7]:
         )
 
 # 9. Prediction History
-with tabs[8]:
+if selected_section == "Prediction History":
     st.subheader("Prediction History")
     st.caption(
         "History is session-based and is not permanent database storage. It is cleared "
@@ -1679,7 +1908,7 @@ with tabs[8]:
             st.rerun()
 
 # 10. Reports & Engineering Recommendations
-with tabs[9]:
+if selected_section == "Reports & Recommendations":
     st.subheader("Reports & Engineering Recommendations")
     st.error(
         "Safety inhibit remains active: 52 measured failing dies were among 96,121 "
@@ -1893,7 +2122,7 @@ with tabs[9]:
     )
 
 # 11. Explainable AI
-with tabs[10]:
+if selected_section == "Explainable AI":
     st.subheader("Explainable AI")
     st.markdown("#### Global model-dependent feature importance")
     if "permutation_importance_v21" not in st.session_state:
@@ -2011,7 +2240,7 @@ with tabs[10]:
             )
 
 # 12. Engineering What-if Simulator
-with tabs[11]:
+if selected_section == "Engineering What-if":
     st.subheader("Engineering What-if Simulator")
     manual = st.session_state.get("manual_last")
     if manual is not None and all(
@@ -2145,7 +2374,7 @@ with tabs[11]:
                 )
 
 # 13. Dataset Management
-with tabs[12]:
+if selected_section == "Dataset Management":
     st.subheader("Dataset Management")
     st.info(
         "Reference datasets are loaded read-only. New uploads are parsed and analyzed "
